@@ -38,6 +38,12 @@ cd claude-dashboard
 make install
 ```
 
+Upgrade to latest:
+
+```bash
+go install github.com/seunggabi/claude-dashboard/cmd/claude-dashboard@latest
+```
+
 First run:
 
 ```bash
