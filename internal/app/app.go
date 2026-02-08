@@ -557,6 +557,8 @@ func Run() error {
 
 // ExecAttach replaces the current process with tmux attach.
 func ExecAttach(name string) error {
+	// Reset terminal to clear stale escape sequences (e.g. [?6c)
+	fmt.Print("\033c")
 	cmd := fmt.Sprintf("tmux attach-session -t %s", name)
 	return execCommand(cmd)
 }
