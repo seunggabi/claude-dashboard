@@ -4,7 +4,10 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"regexp"
 	"strings"
+	"syscall"
+	"time"
 
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
@@ -16,6 +19,12 @@ import (
 	"github.com/seunggabi/claude-dashboard/internal/tmux"
 	"github.com/seunggabi/claude-dashboard/internal/ui"
 )
+
+// validSessionName matches only safe tmux session name characters.
+var validSessionName = regexp.MustCompile(`^[a-zA-Z0-9_./-]+$`)
+
+// Version is set by main.go at build time.
+var Version = "dev"
 
 // View represents the current view.
 type View int
@@ -34,7 +43,6 @@ type Model struct {
 	manager  *session.Manager
 	sessions []session.Session
 	cfg      *config.Config
-	keys     KeyMap
 
 	// UI state
 	view       View
@@ -54,6 +62,8 @@ type Model struct {
 	// Filter
 	filterQuery string
 
+	// Attach target (set when user wants to attach, triggers Quit)
+	attachTarget string
 }
 
 // SessionsMsg carries refreshed session list.
@@ -65,11 +75,6 @@ type SessionsMsg struct {
 // AttachMsg signals to attach to a session.
 type AttachMsg struct {
 	Name string
-}
-
-// AttachFinishedMsg signals tmux attach has completed (user detached).
-type AttachFinishedMsg struct {
-	Err error
 }
 
 // KillMsg signals session was killed.
@@ -106,7 +111,6 @@ func New() (Model, error) {
 	m := Model{
 		manager:    mgr,
 		cfg:        cfg,
-		keys:       DefaultKeyMap(),
 		view:       ViewDashboard,
 		filterText: filterInput,
 	}
@@ -182,21 +186,17 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case AttachMsg:
-		// Drain stdin before exec to prevent DA1 escape sequence (?6c) from leaking into tmux
-		script := fmt.Sprintf(`while read -t 0.1 -n 1 _ 2>/dev/null; do :; done; exec tmux attach-session -t %s`, msg.Name)
-		c := exec.Command("bash", "-c", script)
-		return m, tea.ExecProcess(c, func(err error) tea.Msg {
-			return AttachFinishedMsg{Err: err}
-		})
-
-	case AttachFinishedMsg:
-		// User detached from tmux, refresh sessions and return to dashboard
-		if msg.Err != nil {
-			m.err = msg.Err
+		if !validSessionName.MatchString(msg.Name) {
+			m.err = fmt.Errorf("invalid session name: %s", msg.Name)
+			return m, nil
 		}
-		return m, m.refreshSessions
+		// Set attach target and quit Bubble Tea.
+		// Run() loop will drain stdin, then run tmux attach, then restart.
+		m.attachTarget = msg.Name
+		return m, tea.Quit
 
 	case tea.KeyMsg:
+		m.err = nil // Clear error on any key press
 		return m.handleKey(msg)
 	}
 
@@ -330,6 +330,10 @@ func (m Model) handleDetailKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "K":
 		sessions := m.filteredSessions()
 		if m.cursor < len(sessions) {
+			if !sessions[m.cursor].Managed {
+				m.err = fmt.Errorf("terminal sessions cannot be killed from dashboard")
+				return m, nil
+			}
 			m.confirming = true
 			m.confirmMsg = fmt.Sprintf("Kill session '%s'? (y/n)", sessions[m.cursor].Name)
 		}
@@ -421,30 +425,26 @@ func (m Model) View() string {
 		return "Loading..."
 	}
 
+	sessions := m.filteredSessions()
 	var b strings.Builder
 
 	// Title bar
 	title := styles.Title.Render(" claude-dashboard ")
-	version := lipgloss.NewStyle().Foreground(styles.ColorMuted).Render("v0.1.0")
-	titleBar := title + " " + version
-	b.WriteString(titleBar)
-	b.WriteString("\n")
+	ver := lipgloss.NewStyle().Foreground(styles.ColorMuted).Render(Version)
+	b.WriteString(title + " " + ver + "\n")
 
 	// Error
 	if m.err != nil {
 		b.WriteString(styles.Error.Render(fmt.Sprintf("  Error: %v", m.err)))
 		b.WriteString("\n")
-		m.err = nil
 	}
 
 	// Main content
 	contentHeight := m.height - 4 // title + status + help
 	switch m.view {
 	case ViewDashboard:
-		sessions := m.filteredSessions()
 		content := ui.RenderDashboard(sessions, m.cursor, m.width)
 		b.WriteString(content)
-		// Fill remaining space
 		lines := strings.Count(content, "\n")
 		for i := lines; i < contentHeight; i++ {
 			b.WriteString("\n")
@@ -452,7 +452,6 @@ func (m Model) View() string {
 	case ViewLogs:
 		b.WriteString(ui.RenderLogView(m.logView, m.width))
 	case ViewDetail:
-		sessions := m.filteredSessions()
 		if m.cursor < len(sessions) {
 			s := sessions[m.cursor]
 			b.WriteString(ui.RenderDetail(&s, m.width))
@@ -476,7 +475,6 @@ func (m Model) View() string {
 	}
 
 	// Status bar
-	sessions := m.filteredSessions()
 	viewName := m.viewName()
 	b.WriteString("\n")
 	b.WriteString(ui.StatusBar(m.width, len(sessions), viewName, m.filterQuery))
@@ -529,7 +527,7 @@ func (m Model) killSession(name string) tea.Cmd {
 
 func (m Model) createSession(name, dir string) tea.Cmd {
 	return func() tea.Msg {
-		err := m.manager.Create(name, dir)
+		err := m.manager.Create(name, dir, "")
 		return CreateMsg{Err: err}
 	}
 }
@@ -548,47 +546,106 @@ func (m Model) fetchConversation(path string) tea.Cmd {
 	}
 }
 
+// cleanDA1 detects and removes DA1 residue (?6c) from a tmux pane.
+// It polls every 100ms for up to 2 seconds, cleaning immediately when found.
+func cleanDA1(name string) {
+	for i := 0; i < 20; i++ {
+		time.Sleep(100 * time.Millisecond)
+		out, err := exec.Command("tmux", "capture-pane", "-t", name, "-p").Output()
+		if err != nil {
+			continue
+		}
+		content := string(out)
+		if strings.Contains(content, "[?6c") {
+			_ = exec.Command("tmux", "send-keys", "-t", name,
+				"BSpace", "BSpace", "BSpace", "BSpace").Run()
+			_ = exec.Command("tmux", "refresh-client").Run()
+			return
+		}
+		if strings.Contains(content, "?6c") {
+			_ = exec.Command("tmux", "send-keys", "-t", name,
+				"BSpace", "BSpace", "BSpace").Run()
+			_ = exec.Command("tmux", "refresh-client").Run()
+			return
+		}
+	}
+}
+
+// DrainStdin reads and discards any pending data on stdin (e.g. DA1 response).
+// Exported so main.go can call it at startup.
+func DrainStdin() {
+	fd := int(os.Stdin.Fd())
+	_ = syscall.SetNonblock(fd, true)
+	buf := make([]byte, 1024)
+	os.Stdin.Read(buf)
+	time.Sleep(50 * time.Millisecond)
+	os.Stdin.Read(buf)
+	_ = syscall.SetNonblock(fd, false)
+}
+
 // Run starts the TUI application.
 func Run() error {
-	m, err := New()
-	if err != nil {
-		return err
+	for {
+		// Drain any pending DA1 responses before starting TUI
+		DrainStdin()
+
+		m, err := New()
+		if err != nil {
+			return err
+		}
+
+		p := tea.NewProgram(m,
+			tea.WithAltScreen(),
+		)
+
+		result, err := p.Run()
+		if err != nil {
+			return err
+		}
+
+		model := result.(Model)
+		if model.attachTarget == "" {
+			return nil // Normal quit
+		}
+
+		// Bubble Tea has fully exited alt screen.
+		// Drain stdin to consume any DA1 response (?6c) from the terminal.
+		DrainStdin()
+
+		// Enable mouse scroll
+		name := model.attachTarget
+		_ = exec.Command("tmux", "set-option", "-t", name, "mouse", "on").Run()
+
+		// Background: detect and clean DA1 residue (?6c) from pane
+		go cleanDA1(name)
+
+		// Run tmux attach with TERM=tmux-256color to prevent DA1 query
+		cmd := exec.Command("tmux", "attach-session", "-t", name)
+		cmd.Env = append(os.Environ(), "TERM=tmux-256color")
+		cmd.Stdin = os.Stdin
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+		_ = cmd.Run()
+
+		// User detached, loop back to dashboard
 	}
-
-	p := tea.NewProgram(m,
-		tea.WithAltScreen(),
-		tea.WithMouseCellMotion(),
-	)
-
-	_, err = p.Run()
-	return err
 }
 
-// ExecAttach replaces the current process with tmux attach.
+
+
+// ExecAttach attaches to a tmux session (used by CLI `new` command).
 func ExecAttach(name string) error {
-	// Use bash to: reset terminal, wait for pending DA1 responses,
-	// drain all input, then exec tmux attach.
-	// This avoids [?6c escape sequence leaking into the tmux session.
-	script := fmt.Sprintf(
-		`stty sane 2>/dev/null; sleep 0.2; while read -t 0.05 -n 1 _ 2>/dev/null; do :; done; exec tmux attach-session -t %s`,
-		name,
-	)
-	proc := exec.Command("bash", "-c", script)
-	proc.Stdin = os.Stdin
-	proc.Stdout = os.Stdout
-	proc.Stderr = os.Stderr
-	return proc.Run()
-}
-
-func execCommand(command string) error {
-	parts := strings.Fields(command)
-	if len(parts) == 0 {
-		return fmt.Errorf("empty command")
+	if !validSessionName.MatchString(name) {
+		return fmt.Errorf("invalid session name: %s", name)
 	}
-	cmd := parts[0]
-	args := parts[1:]
-
-	proc := exec.Command(cmd, args...)
+	// Enable mouse scroll
+	_ = exec.Command("tmux", "set-option", "-t", name, "mouse", "on").Run()
+	// Drain stdin right before attach to consume any pending DA1 response
+	DrainStdin()
+	// Background: detect and clean DA1 residue (?6c) from pane
+	go cleanDA1(name)
+	proc := exec.Command("tmux", "attach-session", "-t", name)
+	proc.Env = append(os.Environ(), "TERM=tmux-256color")
 	proc.Stdin = os.Stdin
 	proc.Stdout = os.Stdout
 	proc.Stderr = os.Stderr
@@ -602,5 +659,5 @@ func CreateSession(name, projectDir, claudeArgs string) error {
 		return fmt.Errorf("tmux is required: %w", err)
 	}
 	mgr := session.NewManager(client)
-	return mgr.CreateWithArgs(name, projectDir, claudeArgs)
+	return mgr.Create(name, projectDir, claudeArgs)
 }

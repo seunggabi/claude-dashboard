@@ -14,7 +14,6 @@ type Config struct {
 	SessionPrefix   string        `yaml:"session_prefix"`
 	DefaultDir      string        `yaml:"default_dir"`
 	LogHistory      int           `yaml:"log_history"`
-	Theme           string        `yaml:"theme"`
 }
 
 // configFile is the YAML representation.
@@ -23,7 +22,6 @@ type configFile struct {
 	SessionPrefix   string `yaml:"session_prefix"`
 	DefaultDir      string `yaml:"default_dir"`
 	LogHistory      int    `yaml:"log_history"`
-	Theme           string `yaml:"theme"`
 }
 
 // DefaultConfig returns the default configuration.
@@ -33,7 +31,6 @@ func DefaultConfig() *Config {
 		SessionPrefix:   "cd-",
 		DefaultDir:      "",
 		LogHistory:      1000,
-		Theme:           "dark",
 	}
 }
 
@@ -76,9 +73,6 @@ func Load() *Config {
 	if cf.LogHistory > 0 {
 		cfg.LogHistory = cf.LogHistory
 	}
-	if cf.Theme != "" {
-		cfg.Theme = cf.Theme
-	}
 
 	return cfg
 }
@@ -95,7 +89,6 @@ func Save(cfg *Config) error {
 		SessionPrefix:   cfg.SessionPrefix,
 		DefaultDir:      cfg.DefaultDir,
 		LogHistory:      cfg.LogHistory,
-		Theme:           cfg.Theme,
 	}
 
 	data, err := yaml.Marshal(&cf)

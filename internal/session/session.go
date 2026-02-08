@@ -21,7 +21,6 @@ type Session struct {
 	Name      string
 	Project   string
 	Status    Status
-	Task      string
 	StartedAt time.Time
 	Attached  bool
 	PID       string

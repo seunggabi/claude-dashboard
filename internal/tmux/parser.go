@@ -8,22 +8,16 @@ import (
 
 // RawSession holds parsed tmux session data.
 type RawSession struct {
-	Name      string
-	Created   time.Time
-	Attached  bool
-	Windows   int
-	Activity  time.Time
-	PanePID   string
-	Width     int
-	Height    int
-	Path      string
+	Name     string
+	Created  time.Time
+	Attached bool
+	Windows  int
+	Activity time.Time
+	Path     string
 }
 
 // SessionFormat is the tmux format string for listing sessions.
 const SessionFormat = "#{session_name}|#{session_created}|#{session_attached}|#{session_windows}|#{session_activity}|#{session_path}"
-
-// PaneFormat is the tmux format string for listing panes.
-const PaneFormat = "#{pane_pid}|#{pane_current_path}|#{pane_width}|#{pane_height}"
 
 // ParseSessions parses tmux list-sessions output.
 func ParseSessions(output string) []RawSession {

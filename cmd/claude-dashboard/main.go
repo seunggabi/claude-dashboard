@@ -12,6 +12,9 @@ import (
 var version = "dev"
 
 func main() {
+	app.Version = version
+	app.DrainStdin()
+
 	if len(os.Args) > 1 {
 		switch os.Args[1] {
 		case "--version", "-v":

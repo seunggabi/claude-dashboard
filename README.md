@@ -218,7 +218,6 @@ refresh_interval: 2s       # Auto-refresh interval
 session_prefix: "cd-"      # Prefix for managed sessions
 default_dir: ""            # Default project directory for new sessions
 log_history: 1000          # Number of log lines to capture
-theme: dark                # UI theme
 ```
 
 ## Requirements

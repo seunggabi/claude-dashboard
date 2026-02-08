@@ -2,7 +2,6 @@ package session
 
 import (
 	"fmt"
-	"os/exec"
 	"strings"
 
 	"github.com/seunggabi/claude-dashboard/internal/conversation"
@@ -28,20 +27,8 @@ func (m *Manager) List() ([]Session, error) {
 	return m.detector.Detect()
 }
 
-// Create creates a new Claude session.
-func (m *Manager) Create(name, projectDir string) error {
-	sessionName := SessionPrefix + name
-	command := "claude"
-
-	err := m.client.NewSession(sessionName, projectDir, command)
-	if err != nil {
-		return fmt.Errorf("failed to create session %s: %w", sessionName, err)
-	}
-	return nil
-}
-
-// CreateWithArgs creates a new Claude session with additional claude arguments.
-func (m *Manager) CreateWithArgs(name, projectDir, claudeArgs string) error {
+// Create creates a new Claude session with optional claude arguments.
+func (m *Manager) Create(name, projectDir, claudeArgs string) error {
 	sessionName := SessionPrefix + name
 	command := "claude"
 	if claudeArgs != "" {
@@ -62,11 +49,6 @@ func (m *Manager) Kill(name string) error {
 		return fmt.Errorf("failed to kill session %s: %w", name, err)
 	}
 	return nil
-}
-
-// Attach attaches to a session (returns cmd to execute).
-func (m *Manager) Attach(name string) *exec.Cmd {
-	return m.client.AttachSession(name)
 }
 
 // GetLogs returns the captured pane content for a session.
@@ -90,26 +72,6 @@ func (m *Manager) GetConversation(path string, maxMessages int) (string, error) 
 		return "No conversation messages found.", nil
 	}
 	return conversation.FormatConversation(messages), nil
-}
-
-// SendCommand sends a command to a session.
-func (m *Manager) SendCommand(name, command string) error {
-	return m.client.SendKeys(name, command)
-}
-
-// Refresh re-detects all sessions and returns them.
-func (m *Manager) Refresh() ([]Session, error) {
-	return m.detector.Detect()
-}
-
-// FindByName finds a session by name.
-func (m *Manager) FindByName(sessions []Session, name string) *Session {
-	for i := range sessions {
-		if sessions[i].Name == name {
-			return &sessions[i]
-		}
-	}
-	return nil
 }
 
 // FilterSessions filters sessions by query string.
