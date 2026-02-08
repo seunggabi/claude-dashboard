@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"syscall"
 
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
@@ -565,8 +566,21 @@ func Run() error {
 func ExecAttach(name string) error {
 	// Reset terminal to clear stale escape sequences (e.g. [?6c)
 	fmt.Print("\033c")
+	// Drain pending terminal responses from stdin (DA1 query response)
+	drainStdin()
 	cmd := fmt.Sprintf("tmux attach-session -t %s", name)
 	return execCommand(cmd)
+}
+
+// drainStdin discards any pending input in stdin buffer.
+func drainStdin() {
+	fd := int(os.Stdin.Fd())
+	if err := syscall.SetNonblock(fd, true); err != nil {
+		return
+	}
+	buf := make([]byte, 4096)
+	os.Stdin.Read(buf)
+	syscall.SetNonblock(fd, false)
 }
 
 func execCommand(command string) error {

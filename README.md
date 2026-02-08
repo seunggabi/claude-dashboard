@@ -1,6 +1,6 @@
 # claude-dashboard
 
-**k9s-style TUI for managing Claude Code sessions via tmux.**
+**k9s-style TUI for managing Claude Code sessions with real-time monitoring, conversation history, and process-based session detection.**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
 [![GitHub Stars](https://img.shields.io/github/stars/seunggabi/claude-dashboard?style=social)](https://github.com/seunggabi/claude-dashboard/stargazers)
@@ -50,13 +50,20 @@ claude-dashboard   # Launch the TUI dashboard
 
 Running multiple Claude Code sessions across different projects quickly becomes unmanageable:
 
-- **Lost sessions** - Terminal closed? Session gone.
-- **No overview** - Which session is doing what? No way to tell at a glance.
-- **Context switching** - Constantly hunting through terminal tabs and tmux windows.
+- **Lost sessions** - Terminal closed? Session gone. What was Claude doing?
+- **No overview** - Which session is active? How long has it been running? What are resource usage patterns?
+- **Context switching** - Constantly hunting through terminal tabs, tmux windows, and scattered `.jsonl` logs.
+- **Session discovery** - Sessions hidden in tmux, terminal tabs, or started by other tools.
 
 ### The Solution
 
-claude-dashboard gives you a **single pane of glass** for all your Claude Code sessions, powered by tmux for session persistence.
+claude-dashboard gives you a **single pane of glass** for all your Claude Code sessions:
+
+- **Unified session detection** - Finds Claude sessions in tmux, terminal tabs, and anywhere in the process tree
+- **Conversation history** - View Claude's past interactions directly from the dashboard
+- **Real-time monitoring** - CPU, memory, status, and uptime at a glance
+- **Session persistence** - Sessions keep running in tmux; detach anytime and come back
+- **Single binary** - One `go install` and you're done
 
 ### Session Persistence
 
@@ -68,7 +75,7 @@ Every Claude Code session runs inside tmux. Close your terminal, shut your lapto
 |--------|-------------|
 | Name | Session identifier |
 | Project | Project directory name |
-| Status | `● active` / `○ idle` / `◎ waiting` |
+| Status | `● active` / `○ idle` / `◎ waiting` / `⊘ terminal` |
 | Uptime | Time since session creation |
 | CPU | CPU usage (process tree) |
 | Memory | Memory usage (process tree) |
@@ -99,19 +106,49 @@ If you've used [k9s](https://k9scli.io/), you'll feel right at home. Vim-style n
 
 ### Session Dashboard
 
-View all Claude Code sessions in a table with real-time status, resource usage, and uptime. Auto-refreshes every 2 seconds.
+View all Claude Code sessions in a table with real-time status, resource usage, and uptime. Auto-refreshes every 2 seconds. Includes sessions from:
+- Managed `cd-*` prefix sessions
+- Existing tmux sessions with "claude" in the name
+- Claude processes detected anywhere in the process tree via BFS scan
+- Claude running in terminal tabs (read-only, shown as `⊘ terminal`)
+
+### Conversation Log Viewer
+
+Press `l` to view Claude's conversation history from captured `.jsonl` files in `~/.claude/projects/`. Features:
+- Scrollable viewport for reading past interactions
+- Works for both tmux and terminal sessions
+- Automatically parses conversation structure
+- No attachment needed - read-only access to conversation state
 
 ### Attach / Detach
 
-Press `enter` to attach to any session. Use `Ctrl+B d` (tmux detach) to return to the dashboard. Sessions continue running in the background.
+Press `enter` to attach to any session (tmux sessions only; terminal sessions are read-only). Use `Ctrl+B d` (tmux detach) to return to the dashboard. Sessions continue running in the background.
 
-### Log Viewer
+### Create Session (TUI)
 
-Press `l` to view captured terminal output with a scrollable viewport. Useful for checking what Claude is doing without attaching.
+Press `n` to create a new session interactively. Enter a name and project directory - claude-dashboard creates a tmux session running `claude` in that directory.
 
-### New Session
+### Create Session (CLI)
 
-Press `n` to create a new session. Enter a name and project directory - claude-dashboard creates a tmux session running `claude` in that directory.
+Use the `new` command from your shell:
+
+```bash
+# Auto-generate name from current directory (~/project/foo → cd-project-foo)
+claude-dashboard new
+
+# Explicit session name
+claude-dashboard new my-project
+
+# Specify working directory
+claude-dashboard new --path ~/my/project
+
+# Pass arguments to claude
+claude-dashboard new --args "--model opus"
+```
+
+If a session with the same name already exists, it automatically attaches to it instead of creating a new one.
+
+Combine options freely: `claude-dashboard new my-project --path ~/code/foo --args "--model sonnet"`
 
 ### Kill Session
 
@@ -123,20 +160,31 @@ Press `/` to filter sessions by name, project, status, or path. Press `esc` to c
 
 ### Session Detail
 
-Press `d` for a detailed view showing PID, CPU, memory, path, start time, and attached status.
+Press `d` for a detailed view showing PID, CPU, memory, path, start time, attached status, and session type.
 
 ## Session Naming
 
-| Type | Pattern | Example |
-|------|---------|---------|
-| Managed sessions | `cd-<name>` prefix | `cd-my-project` |
-| Detected sessions | Contains "claude" | `claude-api-work` |
+| Type | Pattern | Example | Detection Method |
+|------|---------|---------|------------------|
+| Managed sessions | `cd-<name>` prefix | `cd-my-project` | Dashboard creates these |
+| Named tmux sessions | Contains "claude" | `claude-api-work` | tmux session list |
+| Process-based detection | No naming requirement | Any Claude process | BFS process tree scan |
+| Terminal sessions | No naming requirement | Claude in terminal tab | Terminal process detection |
 
-Sessions created through claude-dashboard use the `cd-` prefix. Existing tmux sessions with "claude" in the name are also detected automatically.
+Session creation:
+- **TUI**: Press `n` in the dashboard to create a new `cd-*` prefixed session
+- **CLI**: Use `claude-dashboard new [name]` to create from the command line
+- **Existing**: Any tmux session with "claude" in the name is detected automatically
+- **Process-based**: Claude running anywhere in the process tree is found via BFS scan
+- **Terminal**: Claude running in a regular terminal tab is detected (read-only, shown as `⊘ terminal`)
 
 ## Status Detection
 
-Session status is determined by analyzing tmux pane content:
+Status varies by session type:
+
+### tmux Sessions
+
+Status determined by analyzing tmux pane content:
 
 | Status | Indicator | Detection |
 |--------|-----------|-----------|
@@ -144,6 +192,16 @@ Session status is determined by analyzing tmux pane content:
 | `○ idle` | Gray | Prompt visible, no activity |
 | `◎ waiting` | Amber | Input prompt or Y/n question |
 | `? unknown` | - | Unable to determine |
+
+### Terminal Sessions
+
+Terminal sessions (outside tmux) are shown with status:
+
+| Status | Indicator | Detection |
+|--------|-----------|-----------|
+| `⊘ terminal` | Blue | Claude process detected in terminal |
+
+Terminal sessions are read-only: you can view conversation history via `l` but cannot attach. Use tmux sessions for interactive work.
 
 ## Configuration
 
@@ -172,13 +230,42 @@ sudo apt install tmux
 
 ## Usage
 
-```bash
-# Launch TUI dashboard
-claude-dashboard
+### TUI Dashboard
 
+```bash
+# Launch the interactive TUI dashboard
+claude-dashboard
+```
+
+### Create Sessions from CLI
+
+```bash
+# Create with auto-generated name from current path (~/project/foo → cd-project-foo)
+claude-dashboard new
+
+# Create with explicit name
+claude-dashboard new my-project
+
+# Create in a specific directory
+claude-dashboard new my-project --path ~/code/foo
+
+# Pass arguments to claude (e.g., --model opus)
+claude-dashboard new my-project --args "--model opus"
+
+# Combine options
+claude-dashboard new my-project --path ~/code/foo --args "--model sonnet"
+```
+
+### Attach to Sessions
+
+```bash
 # Attach to a session directly (skip TUI)
 claude-dashboard attach cd-my-project
+```
 
+### General
+
+```bash
 # Show version
 claude-dashboard --version
 
@@ -197,11 +284,13 @@ claude-dashboard/
 │   │   └── keys.go                   # Keybinding definitions
 │   ├── session/                      # Session management
 │   │   ├── session.go                # Session data model
-│   │   ├── detector.go               # Discover sessions from tmux
+│   │   ├── detector.go               # Discover sessions from tmux/terminal/processes
 │   │   └── manager.go                # CRUD operations
 │   ├── tmux/                         # tmux integration
 │   │   ├── client.go                 # Command wrapper
 │   │   └── parser.go                 # Output parser
+│   ├── conversation/                 # Conversation history
+│   │   └── reader.go                 # Parse .jsonl files from ~/.claude/projects/
 │   ├── ui/                           # View components
 │   │   ├── dashboard.go              # Session table
 │   │   ├── logs.go                   # Log viewer (viewport)
@@ -210,7 +299,7 @@ claude-dashboard/
 │   │   ├── help.go                   # Help overlay
 │   │   └── statusbar.go             # Status bar
 │   ├── monitor/                      # Resource monitoring
-│   │   ├── process.go                # CPU/memory via ps
+│   │   ├── process.go                # CPU/memory via ps, process tree BFS
 │   │   └── ticker.go                 # Periodic refresh
 │   ├── config/config.go              # YAML configuration
 │   └── styles/styles.go              # Lipgloss styles

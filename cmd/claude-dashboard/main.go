@@ -34,7 +34,6 @@ func main() {
 			path, _ := os.Getwd()
 			name := ""
 			claudeArgs := ""
-			attach := false
 
 			// Parse args: first non-flag arg is name, rest are flags
 			argStart := 2
@@ -55,8 +54,6 @@ func main() {
 						claudeArgs = os.Args[i+1]
 						i++
 					}
-				case "--attach":
-					attach = true
 				}
 			}
 
@@ -74,17 +71,19 @@ func main() {
 				}
 			}
 
-			if err := app.CreateSession(name, path, claudeArgs); err != nil {
-				fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-				os.Exit(1)
-			}
 			sessionName := "cd-" + name
-			fmt.Printf("Session '%s' created in %s\n", sessionName, path)
-			if attach {
-				if err := app.ExecAttach(sessionName); err != nil {
-					fmt.Fprintf(os.Stderr, "Error attaching: %v\n", err)
-					os.Exit(1)
-				}
+
+			// If session already exists, just attach to it
+			if err := app.CreateSession(name, path, claudeArgs); err != nil {
+				// Session might already exist - try attaching
+				fmt.Printf("Attaching to existing session '%s'...\n", sessionName)
+			} else {
+				fmt.Printf("Session '%s' created in %s\n", sessionName, path)
+			}
+
+			if err := app.ExecAttach(sessionName); err != nil {
+				fmt.Fprintf(os.Stderr, "Error attaching: %v\n", err)
+				os.Exit(1)
 			}
 			os.Exit(0)
 		}
@@ -109,7 +108,6 @@ Usage:
 New Session Options:
   --path <dir>         Working directory (default: current dir)
   --args <claude-args> Arguments to pass to claude (e.g. "--model opus")
-  --attach             Attach to session after creation
 
 Keybindings:
   enter   Attach to session
