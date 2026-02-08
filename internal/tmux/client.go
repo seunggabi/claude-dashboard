@@ -30,10 +30,12 @@ func (c *Client) IsRunning() bool {
 // ListSessions returns raw tmux session list with format.
 func (c *Client) ListSessions(format string) (string, error) {
 	cmd := exec.Command(c.tmuxPath, "list-sessions", "-F", format)
-	out, err := cmd.Output()
+	out, err := cmd.CombinedOutput()
 	if err != nil {
-		if strings.Contains(err.Error(), "no server running") ||
-			strings.Contains(string(out), "no server running") {
+		combined := string(out)
+		if strings.Contains(combined, "no server running") ||
+			strings.Contains(combined, "no current client") ||
+			strings.Contains(err.Error(), "exit status") {
 			return "", nil
 		}
 		return "", err

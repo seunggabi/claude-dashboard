@@ -22,10 +22,11 @@ func NewDetector(client *tmux.Client) *Detector {
 func (d *Detector) Detect() ([]Session, error) {
 	output, err := d.client.ListSessions(tmux.SessionFormat)
 	if err != nil {
-		return nil, err
+		// Even if tmux fails, still detect terminal sessions
+		return d.detectTerminalOnly()
 	}
 	if output == "" {
-		return nil, nil
+		return d.detectTerminalOnly()
 	}
 
 	rawSessions := tmux.ParseSessions(output)
@@ -72,6 +73,12 @@ func (d *Detector) Detect() ([]Session, error) {
 	terminalSessions := d.DetectTerminalSessions(tmuxPIDs)
 	sessions = append(sessions, terminalSessions...)
 
+	return sessions, nil
+}
+
+// detectTerminalOnly returns only terminal sessions (when tmux is unavailable).
+func (d *Detector) detectTerminalOnly() ([]Session, error) {
+	sessions := d.DetectTerminalSessions(make(map[string]bool))
 	return sessions, nil
 }
 
