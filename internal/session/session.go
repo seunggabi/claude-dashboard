@@ -12,7 +12,8 @@ const (
 	StatusActive  Status = "active"
 	StatusIdle    Status = "idle"
 	StatusWaiting Status = "waiting"
-	StatusUnknown Status = "unknown"
+	StatusUnknown  Status = "unknown"
+	StatusTerminal Status = "terminal"
 )
 
 // Session represents a Claude Code tmux session.
@@ -27,6 +28,7 @@ type Session struct {
 	CPU       float64
 	Memory    float64
 	Path      string
+	Managed   bool // true = tmux session (can attach/detach), false = terminal process (read-only)
 }
 
 // Uptime returns the human-readable uptime string.
@@ -55,6 +57,8 @@ func (s *Session) StatusString() string {
 		return "○ idle"
 	case StatusWaiting:
 		return "◎ waiting"
+	case StatusTerminal:
+		return "⊘ terminal"
 	default:
 		return "? unknown"
 	}

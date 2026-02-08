@@ -239,6 +239,10 @@ func (m Model) handleDashboardKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "enter":
 		sessions := m.filteredSessions()
 		if len(sessions) > 0 && m.cursor < len(sessions) {
+			if !sessions[m.cursor].Managed {
+				m.err = fmt.Errorf("terminal sessions cannot be attached (not a tmux session)")
+				return m, nil
+			}
 			return m, m.attachSession(sessions[m.cursor].Name)
 		}
 	case "n":
@@ -248,12 +252,20 @@ func (m Model) handleDashboardKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "K":
 		sessions := m.filteredSessions()
 		if len(sessions) > 0 && m.cursor < len(sessions) {
+			if !sessions[m.cursor].Managed {
+				m.err = fmt.Errorf("terminal sessions cannot be killed from dashboard")
+				return m, nil
+			}
 			m.confirming = true
 			m.confirmMsg = fmt.Sprintf("Kill session '%s'? (y/n)", sessions[m.cursor].Name)
 		}
 	case "l":
 		sessions := m.filteredSessions()
 		if len(sessions) > 0 && m.cursor < len(sessions) {
+			if !sessions[m.cursor].Managed {
+				m.err = fmt.Errorf("logs not available for terminal sessions")
+				return m, nil
+			}
 			m.view = ViewLogs
 			s := sessions[m.cursor]
 			m.logView = ui.NewLogView(s.Name, m.width, m.height)

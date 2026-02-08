@@ -1,6 +1,8 @@
 package session
 
 import (
+	"fmt"
+	"os/exec"
 	"strings"
 
 	"github.com/seunggabi/claude-dashboard/internal/tmux"
@@ -43,6 +45,7 @@ func (d *Detector) Detect() ([]Session, error) {
 			StartedAt: raw.Created,
 			Attached:  raw.Attached,
 			Path:      raw.Path,
+			Managed:   true,
 		}
 
 		// Detect status from pane content
@@ -57,7 +60,95 @@ func (d *Detector) Detect() ([]Session, error) {
 		sessions = append(sessions, s)
 	}
 
+	// Collect tmux session PIDs for deduplication
+	tmuxPIDs := make(map[string]bool)
+	for _, s := range sessions {
+		if s.PID != "" {
+			tmuxPIDs[s.PID] = true
+		}
+	}
+
+	// Detect terminal sessions (Claude running outside tmux)
+	terminalSessions := d.DetectTerminalSessions(tmuxPIDs)
+	sessions = append(sessions, terminalSessions...)
+
 	return sessions, nil
+}
+
+// DetectTerminalSessions finds Claude processes running outside tmux.
+func (d *Detector) DetectTerminalSessions(tmuxPIDs map[string]bool) []Session {
+	cmd := exec.Command("ps", "-eo", "pid,ppid,tty,args")
+	out, err := cmd.Output()
+	if err != nil {
+		return nil
+	}
+
+	var sessions []Session
+	lines := strings.Split(string(out), "\n")
+	for _, line := range lines[1:] { // skip header
+		fields := strings.Fields(line)
+		if len(fields) < 4 {
+			continue
+		}
+		pid := fields[0]
+		tty := fields[2]
+
+		// Only match processes where the executable base name is "claude"
+		execName := fields[3]
+		parts := strings.Split(execName, "/")
+		baseName := parts[len(parts)-1]
+		if baseName != "claude" {
+			continue
+		}
+
+		// Skip if already tracked as tmux session
+		if tmuxPIDs[pid] {
+			continue
+		}
+
+		// Skip background/detached processes (no TTY)
+		if tty == "??" || tty == "?" {
+			continue
+		}
+
+		// Get working directory via lsof
+		path := getProcessCWD(pid)
+
+		project := ""
+		if path != "" {
+			pathParts := strings.Split(strings.TrimRight(path, "/"), "/")
+			if len(pathParts) > 0 {
+				project = pathParts[len(pathParts)-1]
+			}
+		}
+
+		s := Session{
+			Name:    fmt.Sprintf("terminal/%s", tty),
+			Project: project,
+			Status:  StatusTerminal,
+			PID:     pid,
+			Path:    path,
+			Managed: false,
+		}
+		sessions = append(sessions, s)
+	}
+
+	return sessions
+}
+
+// getProcessCWD gets the current working directory of a process.
+func getProcessCWD(pid string) string {
+	cmd := exec.Command("lsof", "-a", "-p", pid, "-d", "cwd", "-Fn")
+	out, err := cmd.Output()
+	if err != nil {
+		return ""
+	}
+	for _, line := range strings.Split(string(out), "\n") {
+		if strings.HasPrefix(line, "n/") {
+			return line[1:]
+		}
+	}
+	return ""
 }
 
 // detectStatus determines session status by examining pane content.
