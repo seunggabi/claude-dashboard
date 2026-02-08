@@ -5,7 +5,6 @@ import (
 	"os"
 	"os/exec"
 	"strings"
-	"syscall"
 
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
@@ -564,23 +563,18 @@ func Run() error {
 
 // ExecAttach replaces the current process with tmux attach.
 func ExecAttach(name string) error {
-	// Reset terminal to clear stale escape sequences (e.g. [?6c)
-	fmt.Print("\033c")
-	// Drain pending terminal responses from stdin (DA1 query response)
-	drainStdin()
-	cmd := fmt.Sprintf("tmux attach-session -t %s", name)
-	return execCommand(cmd)
-}
-
-// drainStdin discards any pending input in stdin buffer.
-func drainStdin() {
-	fd := int(os.Stdin.Fd())
-	if err := syscall.SetNonblock(fd, true); err != nil {
-		return
-	}
-	buf := make([]byte, 4096)
-	os.Stdin.Read(buf)
-	syscall.SetNonblock(fd, false)
+	// Use bash to: reset terminal, wait for pending DA1 responses,
+	// drain all input, then exec tmux attach.
+	// This avoids [?6c escape sequence leaking into the tmux session.
+	script := fmt.Sprintf(
+		`stty sane 2>/dev/null; sleep 0.2; while read -t 0.05 -n 1 _ 2>/dev/null; do :; done; exec tmux attach-session -t %s`,
+		name,
+	)
+	proc := exec.Command("bash", "-c", script)
+	proc.Stdin = os.Stdin
+	proc.Stdout = os.Stdout
+	proc.Stderr = os.Stderr
+	return proc.Run()
 }
 
 func execCommand(command string) error {
