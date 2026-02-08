@@ -21,6 +21,13 @@
 ```bash
 # Install via Go
 go install github.com/seunggabi/claude-dashboard/cmd/claude-dashboard@latest
+
+# Add Go bin to PATH (if not already configured)
+export PATH="$HOME/go/bin:$PATH"
+
+# To make it permanent, add to your shell profile:
+# echo 'export PATH="$HOME/go/bin:$PATH"' >> ~/.zshrc   # zsh
+# echo 'export PATH="$HOME/go/bin:$PATH"' >> ~/.bashrc  # bash
 ```
 
 Or build from source:

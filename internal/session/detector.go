@@ -31,7 +31,8 @@ func (d *Detector) Detect() ([]Session, error) {
 
 	for _, raw := range rawSessions {
 		// Include sessions with cd- prefix or that contain claude in the name
-		if !strings.HasPrefix(raw.Name, SessionPrefix) && !strings.Contains(strings.ToLower(raw.Name), "claude") {
+		isNameMatch := strings.HasPrefix(raw.Name, SessionPrefix) || strings.Contains(strings.ToLower(raw.Name), "claude")
+		if !isNameMatch && !d.client.HasClaudeProcess(raw.Name) {
 			continue
 		}
 

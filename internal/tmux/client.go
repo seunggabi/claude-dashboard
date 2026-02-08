@@ -108,3 +108,73 @@ func (c *Client) GetSessionInfo(name, format string) (string, error) {
 	}
 	return strings.TrimSpace(string(out)), nil
 }
+
+// HasClaudeProcess checks if a session has a claude process in its process tree.
+func (c *Client) HasClaudeProcess(name string) bool {
+	// Check pane current command first (fast path)
+	cmd := exec.Command(c.tmuxPath, "list-panes", "-t", name, "-F", "#{pane_current_command}")
+	out, err := cmd.Output()
+	if err == nil {
+		for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+			if strings.Contains(strings.ToLower(line), "claude") {
+				return true
+			}
+		}
+	}
+
+	// Fall back to checking process tree of pane PID
+	pid, err := c.GetSessionPID(name)
+	if err != nil {
+		return false
+	}
+
+	return hasClaudeDescendant(pid)
+}
+
+// hasClaudeDescendant checks if any descendant process of the given PID has "claude" in its command.
+func hasClaudeDescendant(rootPID string) bool {
+	cmd := exec.Command("ps", "-eo", "pid,ppid,args")
+	out, err := cmd.Output()
+	if err != nil {
+		return false
+	}
+
+	type proc struct {
+		pid  string
+		args string
+	}
+
+	childrenMap := make(map[string][]proc)
+	lines := strings.Split(string(out), "\n")
+	for _, line := range lines[1:] { // skip header
+		fields := strings.Fields(line)
+		if len(fields) < 3 {
+			continue
+		}
+		pid := fields[0]
+		ppid := fields[1]
+		args := strings.Join(fields[2:], " ")
+		childrenMap[ppid] = append(childrenMap[ppid], proc{pid: pid, args: args})
+	}
+
+	// BFS from rootPID
+	queue := []string{rootPID}
+	visited := make(map[string]bool)
+	for len(queue) > 0 {
+		current := queue[0]
+		queue = queue[1:]
+		if visited[current] {
+			continue
+		}
+		visited[current] = true
+
+		for _, child := range childrenMap[current] {
+			if strings.Contains(strings.ToLower(child.args), "claude") {
+				return true
+			}
+			queue = append(queue, child.pid)
+		}
+	}
+
+	return false
+}
