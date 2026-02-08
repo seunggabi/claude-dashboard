@@ -3,6 +3,8 @@ package main
 import (
 	"fmt"
 	"os"
+	"path/filepath"
+	"strings"
 
 	"github.com/seunggabi/claude-dashboard/internal/app"
 )
@@ -28,6 +30,63 @@ func main() {
 				os.Exit(1)
 			}
 			os.Exit(0)
+		case "new":
+			path, _ := os.Getwd()
+			name := ""
+			claudeArgs := ""
+			attach := false
+
+			// Parse args: first non-flag arg is name, rest are flags
+			argStart := 2
+			if len(os.Args) > 2 && !strings.HasPrefix(os.Args[2], "--") {
+				name = os.Args[2]
+				argStart = 3
+			}
+
+			for i := argStart; i < len(os.Args); i++ {
+				switch os.Args[i] {
+				case "--path":
+					if i+1 < len(os.Args) {
+						path = os.Args[i+1]
+						i++
+					}
+				case "--args":
+					if i+1 < len(os.Args) {
+						claudeArgs = os.Args[i+1]
+						i++
+					}
+				case "--attach":
+					attach = true
+				}
+			}
+
+			// Default name: path after home dir, e.g. ~/project/foo → project-foo
+			if name == "" {
+				homeDir, _ := os.UserHomeDir()
+				rel := path
+				if strings.HasPrefix(path, homeDir) {
+					rel = strings.TrimPrefix(path, homeDir)
+					rel = strings.TrimPrefix(rel, "/")
+				}
+				name = strings.ReplaceAll(rel, "/", "-")
+				if name == "" {
+					name = filepath.Base(path)
+				}
+			}
+
+			if err := app.CreateSession(name, path, claudeArgs); err != nil {
+				fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+				os.Exit(1)
+			}
+			sessionName := "cd-" + name
+			fmt.Printf("Session '%s' created in %s\n", sessionName, path)
+			if attach {
+				if err := app.ExecAttach(sessionName); err != nil {
+					fmt.Fprintf(os.Stderr, "Error attaching: %v\n", err)
+					os.Exit(1)
+				}
+			}
+			os.Exit(0)
 		}
 	}
 
@@ -41,10 +100,16 @@ func printHelp() {
 	fmt.Println(`claude-dashboard - k9s-style Claude Code Session Manager
 
 Usage:
-  claude-dashboard              Start the TUI dashboard
-  claude-dashboard attach NAME  Attach to a session directly
-  claude-dashboard --version    Show version
-  claude-dashboard --help       Show this help
+  claude-dashboard                                     Start the TUI dashboard
+  claude-dashboard new [NAME] [options]                Create a new session (name defaults to path)
+  claude-dashboard attach NAME                         Attach to a session directly
+  claude-dashboard --version                           Show version
+  claude-dashboard --help                              Show this help
+
+New Session Options:
+  --path <dir>         Working directory (default: current dir)
+  --args <claude-args> Arguments to pass to claude (e.g. "--model opus")
+  --attach             Attach to session after creation
 
 Keybindings:
   enter   Attach to session

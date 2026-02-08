@@ -5,6 +5,7 @@ import (
 	"os/exec"
 	"strings"
 
+	"github.com/seunggabi/claude-dashboard/internal/conversation"
 	"github.com/seunggabi/claude-dashboard/internal/tmux"
 )
 
@@ -39,6 +40,21 @@ func (m *Manager) Create(name, projectDir string) error {
 	return nil
 }
 
+// CreateWithArgs creates a new Claude session with additional claude arguments.
+func (m *Manager) CreateWithArgs(name, projectDir, claudeArgs string) error {
+	sessionName := SessionPrefix + name
+	command := "claude"
+	if claudeArgs != "" {
+		command = "claude " + claudeArgs
+	}
+
+	err := m.client.NewSession(sessionName, projectDir, command)
+	if err != nil {
+		return fmt.Errorf("failed to create session %s: %w", sessionName, err)
+	}
+	return nil
+}
+
 // Kill terminates a session.
 func (m *Manager) Kill(name string) error {
 	err := m.client.KillSession(name)
@@ -59,6 +75,21 @@ func (m *Manager) GetLogs(name string, lines int) (string, error) {
 		lines = 1000
 	}
 	return m.client.CapturePaneContent(name, lines)
+}
+
+// GetConversation returns the formatted conversation log for a session.
+func (m *Manager) GetConversation(path string, maxMessages int) (string, error) {
+	if path == "" {
+		return "", fmt.Errorf("no working directory for session")
+	}
+	messages, err := conversation.ReadConversation(path, maxMessages)
+	if err != nil {
+		return "", err
+	}
+	if len(messages) == 0 {
+		return "No conversation messages found.", nil
+	}
+	return conversation.FormatConversation(messages), nil
 }
 
 // SendCommand sends a command to a session.

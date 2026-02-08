@@ -262,14 +262,13 @@ func (m Model) handleDashboardKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "l":
 		sessions := m.filteredSessions()
 		if len(sessions) > 0 && m.cursor < len(sessions) {
-			if !sessions[m.cursor].Managed {
-				m.err = fmt.Errorf("logs not available for terminal sessions")
-				return m, nil
-			}
-			m.view = ViewLogs
 			s := sessions[m.cursor]
+			m.view = ViewLogs
 			m.logView = ui.NewLogView(s.Name, m.width, m.height)
-			return m, m.fetchLogs(s.Name)
+			if s.Managed {
+				return m, m.fetchLogs(s.Name)
+			}
+			return m, m.fetchConversation(s.Path)
 		}
 	case "d":
 		sessions := m.filteredSessions()
@@ -528,6 +527,13 @@ func (m Model) fetchLogs(name string) tea.Cmd {
 	}
 }
 
+func (m Model) fetchConversation(path string) tea.Cmd {
+	return func() tea.Msg {
+		content, err := m.manager.GetConversation(path, 50)
+		return LogsMsg{Content: content, Err: err}
+	}
+}
+
 // Run starts the TUI application.
 func Run() error {
 	m, err := New()
@@ -576,4 +582,14 @@ func execCommand(command string) error {
 	proc.Stdout = os.Stdout
 	proc.Stderr = os.Stderr
 	return proc.Run()
+}
+
+// CreateSession creates a new Claude session from CLI (non-TUI).
+func CreateSession(name, projectDir, claudeArgs string) error {
+	client, err := tmux.NewClient()
+	if err != nil {
+		return fmt.Errorf("tmux is required: %w", err)
+	}
+	mgr := session.NewManager(client)
+	return mgr.CreateWithArgs(name, projectDir, claudeArgs)
 }
