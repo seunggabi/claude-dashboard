@@ -18,30 +18,36 @@
 
 ## Quick Start
 
+### Homebrew
+
 ```bash
-# Install via Go
-go install github.com/seunggabi/claude-dashboard/cmd/claude-dashboard@latest
-
-# Add Go bin to PATH (if not already configured)
-export PATH="$HOME/go/bin:$PATH"
-
-# To make it permanent, add to your shell profile:
-# echo 'export PATH="$HOME/go/bin:$PATH"' >> ~/.zshrc   # zsh
-# echo 'export PATH="$HOME/go/bin:$PATH"' >> ~/.bashrc  # bash
+brew install seunggabi/tap/claude-dashboard
 ```
 
-Or build from source:
+### Manual Installation
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/seunggabi/claude-dashboard/main/install.sh | bash
+```
+
+This deploys the binary to `~/.local/bin`. For a custom binary name:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/seunggabi/claude-dashboard/main/install.sh | bash -s -- --name <your-binary-name>
+```
+
+### Install via Go
+
+```bash
+go install github.com/seunggabi/claude-dashboard/cmd/claude-dashboard@latest
+```
+
+### Build from Source
 
 ```bash
 git clone https://github.com/seunggabi/claude-dashboard.git
 cd claude-dashboard
 make install
-```
-
-Upgrade to latest:
-
-```bash
-GOFLAGS=-mod=mod go clean -modcache && go install github.com/seunggabi/claude-dashboard/cmd/claude-dashboard@latest
 ```
 
 First run:
@@ -69,7 +75,7 @@ claude-dashboard gives you a **single pane of glass** for all your Claude Code s
 - **Conversation history** - View Claude's past interactions directly from the dashboard
 - **Real-time monitoring** - CPU, memory, status, and uptime at a glance
 - **Session persistence** - Sessions keep running in tmux; detach anytime and come back
-- **Single binary** - One `go install` and you're done
+- **Single binary** - One `brew install` and you're done
 
 ### Session Persistence
 
@@ -222,21 +228,8 @@ log_history: 1000          # Number of log lines to capture
 
 ## Requirements
 
-- **Go 1.25+** (for building and installation)
 - **tmux** (session backend)
-
-### Install Go
-
-```bash
-# macOS
-brew install go
-
-# Ubuntu/Debian
-sudo apt install golang
-
-# Or download from official site
-# https://go.dev/dl/
-```
+- **Go 1.25+** (only for building from source)
 
 ### Install tmux
 
