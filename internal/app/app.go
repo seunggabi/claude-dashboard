@@ -45,13 +45,14 @@ type Model struct {
 	cfg      *config.Config
 
 	// UI state
-	view       View
-	cursor     int
-	width      int
-	height     int
-	err        error
-	confirmMsg string
-	confirming bool
+	view         View
+	cursor       int
+	scrollOffset int
+	width        int
+	height       int
+	err          error
+	confirmMsg   string
+	confirming   bool
 
 	// Sub-views
 	logView    ui.LogView
@@ -195,6 +196,29 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.attachTarget = msg.Name
 		return m, tea.Quit
 
+	case tea.MouseMsg:
+		if m.view == ViewDashboard {
+			sessions := m.filteredSessions()
+			visibleRows := m.visibleSessionRows()
+			switch msg.Type {
+			case tea.MouseWheelUp:
+				if m.cursor > 0 {
+					m.cursor--
+					if m.cursor < m.scrollOffset {
+						m.scrollOffset = m.cursor
+					}
+				}
+			case tea.MouseWheelDown:
+				if m.cursor < len(sessions)-1 {
+					m.cursor++
+					if m.cursor >= m.scrollOffset+visibleRows {
+						m.scrollOffset = m.cursor - visibleRows + 1
+					}
+				}
+			}
+			return m, nil
+		}
+
 	case tea.KeyMsg:
 		m.err = nil // Clear error on any key press
 		return m.handleKey(msg)
@@ -244,11 +268,18 @@ func (m Model) handleDashboardKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "up", "k":
 		if m.cursor > 0 {
 			m.cursor--
+			if m.cursor < m.scrollOffset {
+				m.scrollOffset = m.cursor
+			}
 		}
 	case "down", "j":
 		sessions := m.filteredSessions()
 		if m.cursor < len(sessions)-1 {
 			m.cursor++
+			visibleRows := m.visibleSessionRows()
+			if m.cursor >= m.scrollOffset+visibleRows {
+				m.scrollOffset = m.cursor - visibleRows + 1
+			}
 		}
 	case "enter":
 		sessions := m.filteredSessions()
@@ -443,7 +474,15 @@ func (m Model) View() string {
 	contentHeight := m.height - 4 // title + status + help
 	switch m.view {
 	case ViewDashboard:
-		content := ui.RenderDashboard(sessions, m.cursor, m.width)
+		visibleRows := m.visibleSessionRows()
+		// Clamp scrollOffset
+		if m.scrollOffset > len(sessions)-visibleRows {
+			m.scrollOffset = len(sessions) - visibleRows
+		}
+		if m.scrollOffset < 0 {
+			m.scrollOffset = 0
+		}
+		content := ui.RenderDashboard(sessions, m.cursor, m.width, m.scrollOffset, visibleRows)
 		b.WriteString(content)
 		lines := strings.Count(content, "\n")
 		for i := lines; i < contentHeight; i++ {
@@ -503,6 +542,16 @@ func (m Model) viewName() string {
 
 func (m Model) filteredSessions() []session.Session {
 	return session.FilterSessions(m.sessions, m.filterQuery)
+}
+
+// visibleSessionRows returns how many session rows fit in the content area.
+// Subtracts: title(1) + error(1) + header(1) + status(1) + help(1) + padding(1) = 6
+func (m Model) visibleSessionRows() int {
+	rows := m.height - 6
+	if rows < 1 {
+		rows = 1
+	}
+	return rows
 }
 
 // Commands
@@ -596,6 +645,7 @@ func Run() error {
 
 		p := tea.NewProgram(m,
 			tea.WithAltScreen(),
+			tea.WithMouseCellMotion(),
 		)
 
 		result, err := p.Run()

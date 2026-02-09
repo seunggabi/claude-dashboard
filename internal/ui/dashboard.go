@@ -24,8 +24,8 @@ var DashboardColumns = []struct {
 	{"PATH", 0}, // flexible width
 }
 
-// RenderDashboard renders the session table.
-func RenderDashboard(sessions []session.Session, cursor int, width int) string {
+// RenderDashboard renders the session table with scroll support.
+func RenderDashboard(sessions []session.Session, cursor int, width int, scrollOffset int, visibleRows int) string {
 	var b strings.Builder
 
 	// Calculate flexible column width
@@ -60,8 +60,22 @@ func RenderDashboard(sessions []session.Session, cursor int, width int) string {
 		return b.String()
 	}
 
-	// Rows
-	for i, s := range sessions {
+	// Determine visible range
+	end := scrollOffset + visibleRows
+	if end > len(sessions) {
+		end = len(sessions)
+	}
+
+	// Scroll indicator (top)
+	if scrollOffset > 0 {
+		indicator := styles.Muted.Render(fmt.Sprintf("  ▲ %d more above", scrollOffset))
+		b.WriteString(indicator)
+		b.WriteString("\n")
+	}
+
+	// Rows (only visible range)
+	for i := scrollOffset; i < end; i++ {
+		s := sessions[i]
 		row := renderRow(
 			fmt.Sprintf("%d", i+1),
 			truncate(s.Name, DashboardColumns[1].Width),
@@ -86,6 +100,13 @@ func RenderDashboard(sessions []session.Session, cursor int, width int) string {
 				b.WriteString(row)
 			}
 		}
+		b.WriteString("\n")
+	}
+
+	// Scroll indicator (bottom)
+	if end < len(sessions) {
+		indicator := styles.Muted.Render(fmt.Sprintf("  ▼ %d more below", len(sessions)-end))
+		b.WriteString(indicator)
 		b.WriteString("\n")
 	}
 
