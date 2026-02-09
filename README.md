@@ -41,7 +41,7 @@ make install
 Upgrade to latest:
 
 ```bash
-go install github.com/seunggabi/claude-dashboard/cmd/claude-dashboard@latest
+GOFLAGS=-mod=mod go clean -modcache && go install github.com/seunggabi/claude-dashboard/cmd/claude-dashboard@latest
 ```
 
 First run:
