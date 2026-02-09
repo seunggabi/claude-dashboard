@@ -124,6 +124,7 @@ func (m Model) Init() tea.Cmd {
 	return tea.Batch(
 		m.refreshSessions,
 		monitor.TickCmd(m.cfg.RefreshInterval),
+		tea.EnableMouseCellMotion,
 	)
 }
 
@@ -311,9 +312,9 @@ func (m Model) handleDashboardKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.view = ViewLogs
 			m.logView = ui.NewLogView(s.Name, m.width, m.height)
 			if s.Managed {
-				return m, m.fetchLogs(s.Name)
+				return m, tea.Batch(tea.DisableMouse, m.fetchLogs(s.Name))
 			}
-			return m, m.fetchConversation(s.Path)
+			return m, tea.Batch(tea.DisableMouse, m.fetchConversation(s.Path))
 		}
 	case "d":
 		sessions := m.filteredSessions()
@@ -334,8 +335,11 @@ func (m Model) handleDashboardKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 func (m Model) handleLogsKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
-	case "esc", "q":
+	case "esc":
 		m.view = ViewDashboard
+		return m, tea.EnableMouseCellMotion
+	case "q":
+		return m, tea.Quit
 	default:
 		var cmd tea.Cmd
 		m.logView.Viewport, cmd = m.logView.Viewport.Update(msg)
@@ -356,7 +360,7 @@ func (m Model) handleDetailKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.view = ViewLogs
 			s := sessions[m.cursor]
 			m.logView = ui.NewLogView(s.Name, m.width, m.height)
-			return m, m.fetchLogs(s.Name)
+			return m, tea.Batch(tea.DisableMouse, m.fetchLogs(s.Name))
 		}
 	case "K":
 		sessions := m.filteredSessions()
@@ -645,7 +649,6 @@ func Run() error {
 
 		p := tea.NewProgram(m,
 			tea.WithAltScreen(),
-			tea.WithMouseCellMotion(),
 		)
 
 		result, err := p.Run()
