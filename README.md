@@ -222,8 +222,23 @@ log_history: 1000          # Number of log lines to capture
 
 ## Requirements
 
-- **Go 1.25+** (for building)
+- **Go 1.25+** (for building and installation)
 - **tmux** (session backend)
+
+### Install Go
+
+```bash
+# macOS
+brew install go
+
+# Ubuntu/Debian
+sudo apt install golang
+
+# Or download from official site
+# https://go.dev/dl/
+```
+
+### Install tmux
 
 ```bash
 # macOS
