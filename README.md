@@ -276,6 +276,14 @@ claude-dashboard new my-project --path ~/code/foo --args "--model sonnet"
 claude-dashboard attach cd-my-project
 ```
 
+### Alias (Optional)
+
+`cdn` as a shortcut for `claude-dashboard new`:
+
+```bash
+source <(curl -fsSL https://raw.githubusercontent.com/seunggabi/claude-dashboard/main/alias.sh)
+```
+
 ### General
 
 ```bash
