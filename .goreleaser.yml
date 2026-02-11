@@ -37,7 +37,7 @@ brews:
   - repository:
       owner: seunggabi
       name: homebrew-tap
-      token: "{{ .Env.GITHUB_TOKEN }}"
+      token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
     directory: Formula
     homepage: "https://github.com/seunggabi/claude-dashboard"
     description: "k9s-style TUI for managing Claude Code sessions"
