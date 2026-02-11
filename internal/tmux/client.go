@@ -53,15 +53,7 @@ func (c *Client) NewSession(name, startDir, command string) error {
 		args = append(args, command)
 	}
 	cmd := exec.Command(c.tmuxPath, args...)
-	if err := cmd.Run(); err != nil {
-		return err
-	}
-
-	// Enable mouse scrolling for this session
-	mouseCmd := exec.Command(c.tmuxPath, "set-option", "-t", name, "mouse", "on")
-	_ = mouseCmd.Run()
-
-	return nil
+	return cmd.Run()
 }
 
 // KillSession kills a tmux session by name.

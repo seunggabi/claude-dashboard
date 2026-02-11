@@ -33,6 +33,10 @@ curl -fsSL https://raw.githubusercontent.com/seunggabi/claude-dashboard/main/ins
 This deploys the binary to `~/.local/bin`. For a custom binary name:
 
 ```bash
+~/.local/bin/claude-dashboard
+```
+
+```bash
 curl -fsSL https://raw.githubusercontent.com/seunggabi/claude-dashboard/main/install.sh | bash -s -- --name <your-binary-name>
 ```
 
@@ -99,20 +103,32 @@ If you've used [k9s](https://k9scli.io/), you'll feel right at home. Vim-style n
 
 ## Keybindings
 
-| Key | Action |
-|-----|--------|
-| `enter` | Attach to session |
-| `n` | Create new session |
-| `K` | Kill session (with confirmation) |
-| `l` | View session logs |
-| `d` | Session detail view |
-| `/` | Filter / search sessions |
-| `r` | Manual refresh |
-| `?` | Help overlay |
-| `↑` / `k` | Move cursor up |
-| `↓` / `j` | Move cursor down |
-| `esc` | Go back / cancel |
-| `q` | Quit |
+### Dashboard
+
+| Key       | Action                           |
+|-----------|----------------------------------|
+| `↑` / `k` | Move cursor up                   |
+| `↓` / `j` | Move cursor down                 |
+| `enter`   | Attach to session                |
+| `n`       | Create new session               |
+| `K`       | Kill session (with confirmation) |
+| `l`       | View session logs                |
+| `d`       | Session detail view              |
+| `/`       | Filter / search sessions         |
+| `r`       | Manual refresh                   |
+| `?`       | Help overlay                     |
+| `esc`     | Go back / cancel                 |
+| `q`       | Quit                             |
+
+### Logs Viewer
+
+| Key             | Action            |
+|-----------------|-------------------|
+| `↑` / `k`       | Scroll up         |
+| `↓` / `j`       | Scroll down       |
+| `PgUp` / `PgDn` | Page up / down    |
+| `esc`           | Back to dashboard |
+| `q`             | Quit              |
 
 ## Features
 
@@ -135,6 +151,52 @@ Press `l` to view Claude's conversation history from captured `.jsonl` files in 
 ### Attach / Detach
 
 Press `enter` to attach to any session (tmux sessions only; terminal sessions are read-only). Use `Ctrl+B d` (tmux detach) to return to the dashboard. Sessions continue running in the background.
+
+### Tips
+
+**Copy/Paste in Attached Sessions**
+
+Mouse mode is enabled by default for smooth scrolling. To copy text:
+
+- **macOS**: Hold `Option (⌥)` key while dragging to select text, then `Cmd+C` to copy
+- **Linux**: Hold `Shift` key while dragging to select text, then `Ctrl+Shift+C` to copy
+
+**Scrolling through history**:
+- Press `Ctrl+B [` to enter copy mode
+- Use arrow keys, `PgUp`/`PgDn`, or vi keys (`j`/`k`) to scroll
+- Press `q` or `Esc` to exit copy mode
+
+**Copy text while Claude is actively outputting**:
+- **Method 1 (Recommended)**: Press `Ctrl+B [` to freeze the screen in copy mode, then select and copy text
+- **Method 2**: Press `Ctrl+S` to pause output, copy text, then `Ctrl+Q` to resume
+
+**Toggle Mouse Mode**:
+- Press `F12` to toggle mouse mode on/off (super easy!)
+- Toggle displays message: `Mouse: ON` or `Mouse: OFF`
+- **ON** (default): Mouse wheel scrolling enabled, use `Option`/`Shift` + drag to copy text
+- **OFF**: Easy text selection by dragging (no modifier key needed), scroll with `Ctrl+B [`
+
+**Setup (Required)**:
+Add these lines to your `~/.tmux.conf`:
+
+```bash
+# F12 key binding for mouse mode toggle with immediate status update
+bind-key -n F12 run-shell "if tmux show-option -gv mouse | grep -q on; then tmux set-option -g mouse off && tmux display-message 'Mouse: OFF'; else tmux set-option -g mouse on && tmux display-message 'Mouse: ON'; fi; tmux refresh-client -S"
+
+# Status bar with dynamic version check and mouse status
+# Automatically checks for updates every hour
+set -g status-right-length 80  # Increase right area to prevent truncation
+set -g status-right "#(~/.local/bin/claude-dashboard-version-check) | [F12] Mouse:#{?mouse,ON,OFF} | %H:%M"
+set -g status-interval 5  # Update every 5 seconds for quick status refresh
+
+# Enable mouse mode by default
+set -g mouse on
+```
+
+Then reload:
+```bash
+tmux source-file ~/.tmux.conf
+```
 
 ### Create Session (TUI)
 

@@ -40,6 +40,15 @@ func RenderHelp(width int) string {
 			},
 		},
 		{
+			title: "Logs Viewer",
+			keys: []struct{ key, desc string }{
+				{"↑/k", "Scroll up"},
+				{"↓/j", "Scroll down"},
+				{"pgup/pgdn", "Page up / down"},
+				{"esc", "Back to dashboard"},
+			},
+		},
+		{
 			title: "Search & Other",
 			keys: []struct{ key, desc string }{
 				{"/", "Filter sessions"},

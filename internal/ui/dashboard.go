@@ -10,13 +10,14 @@ import (
 )
 
 // DashboardColumns defines the table column widths.
+// Width 0 means flexible (calculated dynamically).
 var DashboardColumns = []struct {
 	Title string
 	Width int
 }{
 	{"#", 4},
-	{"NAME", 20},
-	{"PROJECT", 18},
+	{"NAME", 0},    // flexible width
+	{"PROJECT", 35},
 	{"STATUS", 12},
 	{"UPTIME", 10},
 	{"CPU", 8},
@@ -28,15 +29,19 @@ var DashboardColumns = []struct {
 func RenderDashboard(sessions []session.Session, cursor int, width int, scrollOffset int, visibleRows int) string {
 	var b strings.Builder
 
-	// Calculate flexible column width
-	fixedWidth := 0
+	// Calculate flexible column widths
+	fixedWidth := 2 // left margin
 	for _, col := range DashboardColumns {
-		fixedWidth += col.Width + 2
+		if col.Width > 0 {
+			fixedWidth += col.Width + 2
+		}
 	}
-	pathWidth := width - fixedWidth
-	if pathWidth < 10 {
-		pathWidth = 10
+	flexWidth := width - fixedWidth
+	if flexWidth < 30 {
+		flexWidth = 30
 	}
+	nameWidth := flexWidth / 3
+	pathWidth := flexWidth - nameWidth
 
 	// Header
 	header := renderRow(
@@ -48,7 +53,7 @@ func RenderDashboard(sessions []session.Session, cursor int, width int, scrollOf
 		DashboardColumns[5].Title,
 		DashboardColumns[6].Title,
 		DashboardColumns[7].Title,
-		pathWidth,
+		nameWidth, pathWidth,
 	)
 	b.WriteString(styles.Header.Render(header))
 	b.WriteString("\n")
@@ -78,14 +83,14 @@ func RenderDashboard(sessions []session.Session, cursor int, width int, scrollOf
 		s := sessions[i]
 		row := renderRow(
 			fmt.Sprintf("%d", i+1),
-			truncate(s.Name, DashboardColumns[1].Width),
+			truncate(s.Name, nameWidth),
 			truncate(s.Project, DashboardColumns[2].Width),
 			s.StatusString(),
 			s.Uptime(),
 			fmt.Sprintf("%.1f%%", s.CPU),
 			fmt.Sprintf("%.1f%%", s.Memory),
 			truncatePath(s.Path, pathWidth),
-			pathWidth,
+			nameWidth, pathWidth,
 		)
 
 		if i == cursor {
@@ -113,9 +118,9 @@ func RenderDashboard(sessions []session.Session, cursor int, width int, scrollOf
 	return b.String()
 }
 
-func renderRow(idx, name, project, status, uptime, cpu, mem, path string, pathWidth int) string {
-	return fmt.Sprintf("  %-4s%-22s%-20s%-14s%-12s%-10s%-10s%-*s",
-		idx, name, project, status, uptime, cpu, mem, pathWidth, path)
+func renderRow(idx, name, project, status, uptime, cpu, mem, path string, nameWidth, pathWidth int) string {
+	return fmt.Sprintf("  %-4s%-*s  %-35s%-12s%-10s%-8s%-8s%-*s",
+		idx, nameWidth, name, project, status, uptime, cpu, mem, pathWidth, path)
 }
 
 func truncate(s string, maxLen int) string {

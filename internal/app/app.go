@@ -124,7 +124,6 @@ func (m Model) Init() tea.Cmd {
 	return tea.Batch(
 		m.refreshSessions,
 		monitor.TickCmd(m.cfg.RefreshInterval),
-		tea.EnableMouseCellMotion,
 	)
 }
 
@@ -196,29 +195,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Run() loop will drain stdin, then run tmux attach, then restart.
 		m.attachTarget = msg.Name
 		return m, tea.Quit
-
-	case tea.MouseMsg:
-		if m.view == ViewDashboard {
-			sessions := m.filteredSessions()
-			visibleRows := m.visibleSessionRows()
-			switch msg.Type {
-			case tea.MouseWheelUp:
-				if m.cursor > 0 {
-					m.cursor--
-					if m.cursor < m.scrollOffset {
-						m.scrollOffset = m.cursor
-					}
-				}
-			case tea.MouseWheelDown:
-				if m.cursor < len(sessions)-1 {
-					m.cursor++
-					if m.cursor >= m.scrollOffset+visibleRows {
-						m.scrollOffset = m.cursor - visibleRows + 1
-					}
-				}
-			}
-			return m, nil
-		}
 
 	case tea.KeyMsg:
 		m.err = nil // Clear error on any key press
@@ -312,9 +288,9 @@ func (m Model) handleDashboardKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.view = ViewLogs
 			m.logView = ui.NewLogView(s.Name, m.width, m.height)
 			if s.Managed {
-				return m, tea.Batch(tea.DisableMouse, m.fetchLogs(s.Name))
+				return m, m.fetchLogs(s.Name)
 			}
-			return m, tea.Batch(tea.DisableMouse, m.fetchConversation(s.Path))
+			return m, m.fetchConversation(s.Path)
 		}
 	case "d":
 		sessions := m.filteredSessions()
@@ -337,7 +313,7 @@ func (m Model) handleLogsKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "esc":
 		m.view = ViewDashboard
-		return m, tea.EnableMouseCellMotion
+		return m, nil
 	case "q":
 		return m, tea.Quit
 	default:
@@ -345,7 +321,6 @@ func (m Model) handleLogsKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.logView.Viewport, cmd = m.logView.Viewport.Update(msg)
 		return m, cmd
 	}
-	return m, nil
 }
 
 func (m Model) handleDetailKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
@@ -360,7 +335,7 @@ func (m Model) handleDetailKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.view = ViewLogs
 			s := sessions[m.cursor]
 			m.logView = ui.NewLogView(s.Name, m.width, m.height)
-			return m, tea.Batch(tea.DisableMouse, m.fetchLogs(s.Name))
+			return m, m.fetchLogs(s.Name)
 		}
 	case "K":
 		sessions := m.filteredSessions()
@@ -691,8 +666,8 @@ func ExecAttach(name string) error {
 	if !validSessionName.MatchString(name) {
 		return fmt.Errorf("invalid session name: %s", name)
 	}
-	// Enable mouse scroll
-	_ = exec.Command("tmux", "set-option", "-t", name, "mouse", "on").Run()
+	// Mouse mode is controlled globally via Ctrl+B m toggle
+	// Don't override user's preference here
 	// Drain stdin right before attach to consume any pending DA1 response
 	DrainStdin()
 	// Background: detect and clean DA1 residue (?6c) from pane
