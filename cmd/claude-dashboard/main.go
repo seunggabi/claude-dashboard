@@ -24,7 +24,7 @@ func main() {
 			if !setup.CheckSetup() {
 				fmt.Println("📦 First time setup detected...")
 				fmt.Println()
-				if err := setup.Setup(false); err != nil {
+				if err := setup.Setup(false, version); err != nil {
 					fmt.Fprintf(os.Stderr, "Auto-setup failed: %v\n", err)
 					fmt.Println()
 					fmt.Println("You can run 'claude-dashboard setup' manually later.")
@@ -37,7 +37,7 @@ func main() {
 		if !setup.CheckSetup() {
 			fmt.Println("📦 First time setup detected...")
 			fmt.Println()
-			if err := setup.Setup(false); err != nil {
+			if err := setup.Setup(false, version); err != nil {
 				fmt.Fprintf(os.Stderr, "Auto-setup failed: %v\n", err)
 				fmt.Println()
 				fmt.Println("You can run 'claude-dashboard setup' manually later.")
@@ -55,7 +55,7 @@ func main() {
 			printHelp()
 			os.Exit(0)
 		case "setup":
-			if err := setup.Setup(false); err != nil {
+			if err := setup.Setup(false, version); err != nil {
 				fmt.Fprintf(os.Stderr, "Setup failed: %v\n", err)
 				os.Exit(1)
 			}

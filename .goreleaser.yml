@@ -47,12 +47,27 @@ brews:
     license: "MIT"
     install: |
       bin.install "claude-dashboard"
+      # Install helper scripts to a temporary location for setup to use
+      libexec.install "scripts/tmux-mouse-toggle.sh"
+      libexec.install "scripts/tmux-status-bar.sh"
     post_install: |
-      # Helper scripts are embedded in the binary
-      # They will be installed automatically on first run
-      system "#{bin}/claude-dashboard", "setup" rescue nil
+      # Run setup to install scripts and configure tmux
+      # Copy scripts from libexec to ~/.local/bin
+      home = Dir.home
+      local_bin = File.join(home, ".local", "bin")
+      FileUtils.mkdir_p(local_bin)
+
+      FileUtils.cp(File.join(libexec, "tmux-mouse-toggle.sh"), File.join(local_bin, "claude-dashboard-mouse-toggle"))
+      FileUtils.cp(File.join(libexec, "tmux-status-bar.sh"), File.join(local_bin, "claude-dashboard-status-bar"))
+      FileUtils.chmod(0755, File.join(local_bin, "claude-dashboard-mouse-toggle"))
+      FileUtils.chmod(0755, File.join(local_bin, "claude-dashboard-status-bar"))
+
+      # Run setup to configure tmux
+      system "#{bin}/claude-dashboard", "setup"
     caveats: |
-      Setup is automatic on first run, or run manually:
+      Setup was automatically run during installation.
+
+      If you need to re-run setup:
         claude-dashboard setup
 
       This will:

@@ -57,9 +57,42 @@ func SetupTmuxConfig() error {
 		existingConfig = string(data)
 	}
 
-	// Check if already configured
-	if strings.Contains(existingConfig, "claude-dashboard-mouse-toggle") {
-		return nil // Already configured
+	// Remove old/duplicate claude-dashboard configurations
+	lines := strings.Split(existingConfig, "\n")
+	var cleanedLines []string
+	skipUntilBlank := false
+
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+
+		// Skip old claude-dashboard comment blocks and their following lines
+		if strings.HasPrefix(trimmed, "# Claude Dashboard -") ||
+			strings.HasPrefix(trimmed, "# claude-dashboard:") {
+			skipUntilBlank = true
+			continue
+		}
+
+		// Skip lines that reference old scripts or duplicate bindings
+		if strings.Contains(line, "claude-dashboard-version-check") ||
+			strings.Contains(line, "claude-dashboard-mouse-toggle") ||
+			strings.Contains(line, "claude-dashboard-status-bar") {
+			continue
+		}
+
+		// Stop skipping when we hit a blank line after a comment block
+		if skipUntilBlank && trimmed == "" {
+			skipUntilBlank = false
+			continue
+		}
+
+		if !skipUntilBlank {
+			cleanedLines = append(cleanedLines, line)
+		}
+	}
+
+	// Remove trailing empty lines
+	for len(cleanedLines) > 0 && strings.TrimSpace(cleanedLines[len(cleanedLines)-1]) == "" {
+		cleanedLines = cleanedLines[:len(cleanedLines)-1]
 	}
 
 	// Configuration to add
@@ -76,14 +109,10 @@ set -g status-interval 5
 set -g mouse on
 `
 
-	// Append configuration
-	f, err := os.OpenFile(tmuxConfPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-	if err != nil {
-		return fmt.Errorf("failed to open tmux config: %w", err)
-	}
-	defer f.Close()
+	// Write cleaned config with new configuration
+	newConfig := strings.Join(cleanedLines, "\n") + config
 
-	if _, err := f.WriteString(config); err != nil {
+	if err := os.WriteFile(tmuxConfPath, []byte(newConfig), 0644); err != nil {
 		return fmt.Errorf("failed to write tmux config: %w", err)
 	}
 
@@ -108,8 +137,34 @@ func ReloadTmuxConfig() error {
 	return nil
 }
 
+// UpdateVersionCache updates the cached version information
+func UpdateVersionCache(version string) error {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return fmt.Errorf("failed to get home directory: %w", err)
+	}
+
+	cacheDir := filepath.Join(homeDir, ".cache", "claude-dashboard")
+	if err := os.MkdirAll(cacheDir, 0755); err != nil {
+		return fmt.Errorf("failed to create cache directory: %w", err)
+	}
+
+	// Normalize version format (ensure it starts with 'v')
+	if !strings.HasPrefix(version, "v") && version != "dev" {
+		version = "v" + version
+	}
+
+	// Update current version cache
+	currentVersionFile := filepath.Join(cacheDir, "current-version")
+	if err := os.WriteFile(currentVersionFile, []byte(version), 0644); err != nil {
+		return fmt.Errorf("failed to write current version cache: %w", err)
+	}
+
+	return nil
+}
+
 // Setup performs the complete setup
-func Setup(silent bool) error {
+func Setup(silent bool, version string) error {
 	if !silent {
 		fmt.Println("🔧 Installing claude-dashboard helper scripts...")
 	}
@@ -141,6 +196,24 @@ func Setup(silent bool) error {
 	} else {
 		if !silent {
 			fmt.Println("✅ Tmux configuration reloaded")
+		}
+	}
+
+	// Update version cache
+	if version != "" && version != "dev" {
+		if !silent {
+			fmt.Println()
+			fmt.Println("🔄 Updating version cache...")
+		}
+
+		if err := UpdateVersionCache(version); err != nil {
+			if !silent {
+				fmt.Printf("⚠️  Warning: Could not update version cache: %v\n", err)
+			}
+		} else {
+			if !silent {
+				fmt.Println("✅ Version cache updated")
+			}
 		}
 	}
 
