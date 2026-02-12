@@ -21,6 +21,9 @@ builds:
 archives:
   - format: tar.gz
     name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    files:
+      - scripts/tmux-mouse-toggle.sh
+      - scripts/tmux-status-bar.sh
 
 checksum:
   name_template: "checksums.txt"
@@ -44,3 +47,5 @@ brews:
     license: "MIT"
     install: |
       bin.install "claude-dashboard"
+      bin.install "scripts/tmux-mouse-toggle.sh" => "claude-dashboard-mouse-toggle"
+      bin.install "scripts/tmux-status-bar.sh" => "claude-dashboard-status-bar"

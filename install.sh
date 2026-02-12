@@ -178,6 +178,15 @@ extract_and_install() {
     print_info "Installing to $install_path..."
     ensure mv "$binary_path" "$install_path"
 
+    # Install helper scripts if they exist in the archive
+    if [ -d "$temp_dir/scripts" ]; then
+        print_info "Installing helper scripts..."
+        ensure cp "$temp_dir/scripts/tmux-mouse-toggle.sh" "$INSTALL_DIR/claude-dashboard-mouse-toggle"
+        ensure cp "$temp_dir/scripts/tmux-status-bar.sh" "$INSTALL_DIR/claude-dashboard-status-bar"
+        ensure chmod +x "$INSTALL_DIR/claude-dashboard-mouse-toggle"
+        ensure chmod +x "$INSTALL_DIR/claude-dashboard-status-bar"
+    fi
+
     print_info "Installation complete!"
 }
 

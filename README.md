@@ -189,14 +189,13 @@ Mouse mode is enabled by default for smooth scrolling. To copy text:
 Add these lines to your `~/.tmux.conf`:
 
 ```bash
-# F12 key binding for mouse mode toggle with immediate status update
-bind-key -n F12 run-shell "if tmux show-option -gv mouse | grep -q on; then tmux set-option -g mouse off && tmux display-message 'Mouse: OFF'; else tmux set-option -g mouse on && tmux display-message 'Mouse: ON'; fi; tmux refresh-client -S"
+# F12 key binding for mouse mode toggle
+bind-key -n F12 run-shell "~/.local/bin/claude-dashboard-mouse-toggle"
 
-# Status bar with dynamic version check and mouse status
-# Automatically checks for updates every hour
-set -g status-right-length 80  # Increase right area to prevent truncation
-set -g status-right "#(~/.local/bin/claude-dashboard-version-check) | [F12] Mouse:#{?mouse,ON,OFF} | %H:%M"
-set -g status-interval 5  # Update every 5 seconds for quick status refresh
+# Status bar with version check and mouse status (updates every hour)
+set -g status-right-length 80
+set -g status-right "#(~/.local/bin/claude-dashboard-status-bar) | [F12] Mouse:#{?mouse,ON,OFF} | %H:%M"
+set -g status-interval 5
 
 # Enable mouse mode by default
 set -g mouse on
