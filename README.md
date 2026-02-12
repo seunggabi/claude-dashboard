@@ -22,13 +22,23 @@
 
 ```bash
 brew install seunggabi/tap/claude-dashboard
+# Setup is automatic on first run, or run manually:
+claude-dashboard setup
 ```
 
 ### Manual Installation
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/seunggabi/claude-dashboard/main/install.sh | bash
+# Setup is automatic on first run, or run manually:
+claude-dashboard setup
 ```
+
+**Setup includes:**
+- ✅ Installs helper scripts to `~/.local/bin/`
+- ✅ Configures `~/.tmux.conf` for F12 mouse toggle
+- ✅ Adds status bar with version info
+- ✅ Enables mouse mode by default
 
 This deploys the binary to `~/.local/bin`. For a custom binary name:
 
@@ -185,26 +195,18 @@ Mouse mode is enabled by default for smooth scrolling. To copy text:
 - **ON** (default): Mouse wheel scrolling enabled, use `Option`/`Shift` + drag to copy text
 - **OFF**: Easy text selection by dragging (no modifier key needed), scroll with `Ctrl+B [`
 
-**Setup (Required)**:
-Add these lines to your `~/.tmux.conf`:
-
+**Setup**:
+Setup is **automatic on first run**, or you can run it manually:
 ```bash
-# F12 key binding for mouse mode toggle
-bind-key -n F12 run-shell "~/.local/bin/claude-dashboard-mouse-toggle"
-
-# Status bar with version check and mouse status (updates every hour)
-set -g status-right-length 80
-set -g status-right "#(~/.local/bin/claude-dashboard-status-bar) | [F12] Mouse:#{?mouse,ON,OFF} | %H:%M"
-set -g status-interval 5
-
-# Enable mouse mode by default
-set -g mouse on
+claude-dashboard setup
 ```
 
-Then reload:
-```bash
-tmux source-file ~/.tmux.conf
-```
+This will:
+- Install helper scripts (`claude-dashboard-mouse-toggle`, `claude-dashboard-status-bar`) to `~/.local/bin/`
+- Add F12 key binding to `~/.tmux.conf`
+- Configure status bar with version check and mouse status
+- Enable mouse mode by default
+- Reload tmux configuration if tmux is running
 
 ### Create Session (TUI)
 
@@ -349,6 +351,9 @@ claude-dashboard attach cd-my-project
 ### General
 
 ```bash
+# Run setup (installs helper scripts and configures tmux)
+claude-dashboard setup
+
 # Show version
 claude-dashboard --version
 
