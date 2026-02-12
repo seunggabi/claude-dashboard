@@ -53,6 +53,7 @@ type Model struct {
 	err          error
 	confirmMsg   string
 	confirming   bool
+	killingIdle  bool // true when confirming bulk kill of idle sessions
 
 	// Sub-views
 	logView    ui.LogView
@@ -281,6 +282,16 @@ func (m Model) handleDashboardKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.confirming = true
 			m.confirmMsg = fmt.Sprintf("Kill session '%s'? (y/n)", sessions[m.cursor].Name)
 		}
+	case "ctrl+k":
+		// Kill all idle sessions
+		idleSessions := m.getIdleSessions()
+		if len(idleSessions) == 0 {
+			m.err = fmt.Errorf("no idle sessions to kill")
+			return m, nil
+		}
+		m.confirming = true
+		m.killingIdle = true
+		m.confirmMsg = fmt.Sprintf("Kill %d idle session(s)? (y/n)", len(idleSessions))
 	case "l":
 		sessions := m.filteredSessions()
 		if len(sessions) > 0 && m.cursor < len(sessions) {
@@ -389,6 +400,13 @@ func (m Model) handleHelpKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 func (m Model) handleConfirmKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "y", "Y":
+		if m.killingIdle {
+			// Kill all idle sessions
+			m.confirming = false
+			m.killingIdle = false
+			return m, m.killIdleSessions()
+		}
+		// Kill single session
 		sessions := m.filteredSessions()
 		if m.cursor < len(sessions) {
 			return m, m.killSession(sessions[m.cursor].Name)
@@ -396,6 +414,7 @@ func (m Model) handleConfirmKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.confirming = false
 	case "n", "N", "esc":
 		m.confirming = false
+		m.killingIdle = false
 	}
 	return m, nil
 }
@@ -551,6 +570,32 @@ func (m Model) killSession(name string) tea.Cmd {
 		err := m.manager.Kill(name)
 		return KillMsg{Err: err}
 	}
+}
+
+func (m Model) killIdleSessions() tea.Cmd {
+	return func() tea.Msg {
+		idleSessions := m.getIdleSessions()
+		var errors []string
+		for _, s := range idleSessions {
+			if err := m.manager.Kill(s.Name); err != nil {
+				errors = append(errors, fmt.Sprintf("%s: %v", s.Name, err))
+			}
+		}
+		if len(errors) > 0 {
+			return KillMsg{Err: fmt.Errorf("failed to kill some sessions: %s", strings.Join(errors, "; "))}
+		}
+		return KillMsg{Err: nil}
+	}
+}
+
+func (m Model) getIdleSessions() []session.Session {
+	var idle []session.Session
+	for _, s := range m.sessions {
+		if s.Status == session.StatusIdle && s.Managed {
+			idle = append(idle, s)
+		}
+	}
+	return idle
 }
 
 func (m Model) createSession(name, dir string) tea.Cmd {

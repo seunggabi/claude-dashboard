@@ -154,6 +154,7 @@ Keybindings:
   enter   Attach to session
   n       New session
   K       Kill session
+  ctrl+k  Kill all idle sessions
   l       View logs
   d       Session detail
   /       Filter

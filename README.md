@@ -124,20 +124,21 @@ If you've used [k9s](https://k9scli.io/), you'll feel right at home. Vim-style n
 
 ### Dashboard
 
-| Key       | Action                           |
-|-----------|----------------------------------|
-| `↑` / `k` | Move cursor up                   |
-| `↓` / `j` | Move cursor down                 |
-| `enter`   | Attach to session                |
-| `n`       | Create new session               |
-| `K`       | Kill session (with confirmation) |
-| `l`       | View session logs                |
-| `d`       | Session detail view              |
-| `/`       | Filter / search sessions         |
-| `r`       | Manual refresh                   |
-| `?`       | Help overlay                     |
-| `esc`     | Go back / cancel                 |
-| `q`       | Quit                             |
+| Key       | Action                                    |
+|-----------|-------------------------------------------|
+| `↑` / `k` | Move cursor up                            |
+| `↓` / `j` | Move cursor down                          |
+| `enter`   | Attach to session                         |
+| `n`       | Create new session                        |
+| `K`       | Kill session (with confirmation)          |
+| `ctrl+k`  | Kill all idle sessions (with confirmation)|
+| `l`       | View session logs                         |
+| `d`       | Session detail view                       |
+| `/`       | Filter / search sessions                  |
+| `r`       | Manual refresh                            |
+| `?`       | Help overlay                              |
+| `esc`     | Go back / cancel                          |
+| `q`       | Quit                                      |
 
 ### Logs Viewer
 
