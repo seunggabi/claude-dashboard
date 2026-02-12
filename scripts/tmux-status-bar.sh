@@ -19,7 +19,7 @@ fi
 if [ $((CURRENT_TIME - LAST_CHECK)) -gt 3600 ]; then
     # Get current installed version
     if command -v claude-dashboard &> /dev/null; then
-        CURRENT=$(claude-dashboard --version 2>/dev/null | grep -oE 'v[0-9]+\.[0-9]+\.[0-9]+' || echo "v0.0.0")
+        CURRENT=$(claude-dashboard --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | sed 's/^/v/' || echo "v0.0.0")
         echo "$CURRENT" > "$CURRENT_VERSION_FILE"
     fi
 
