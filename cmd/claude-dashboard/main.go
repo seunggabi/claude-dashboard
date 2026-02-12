@@ -16,6 +16,12 @@ func main() {
 	app.Version = version
 	app.DrainStdin()
 
+	// Always update version cache on startup (important for Homebrew upgrades)
+	// This is silent and fast, so it won't impact user experience
+	if version != "" && version != "dev" {
+		_ = setup.UpdateVersionCache(version)
+	}
+
 	// Auto-setup on first run (before any command)
 	// Skip for --version, --help, and setup commands
 	if len(os.Args) > 1 {

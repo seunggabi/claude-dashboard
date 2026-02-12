@@ -102,11 +102,14 @@ bind-key -n F12 run-shell "~/.local/bin/claude-dashboard-mouse-toggle"
 
 # claude-dashboard: Status bar with version check and mouse status
 set -g status-right-length 80
-set -g status-right "#(~/.local/bin/claude-dashboard-status-bar) | [F12] Mouse:#{?mouse,ON,OFF} | %H:%M"
+set -g status-right "#(~/.local/bin/claude-dashboard-status-bar) | [F12] #[fg=#{?mouse,green,red}]Mouse:#{?mouse,ON,OFF}#[default] | %H:%M"
 set -g status-interval 5
 
 # claude-dashboard: Enable mouse mode by default
 set -g mouse on
+
+# claude-dashboard: Terminal overrides for better mouse support
+set -g terminal-overrides 'xterm*:smcup@:rmcup@'
 `
 
 	// Write cleaned config with new configuration
