@@ -47,5 +47,18 @@ brews:
     license: "MIT"
     install: |
       bin.install "claude-dashboard"
-      bin.install "scripts/tmux-mouse-toggle.sh" => "claude-dashboard-mouse-toggle"
-      bin.install "scripts/tmux-status-bar.sh" => "claude-dashboard-status-bar"
+    post_install: |
+      # Helper scripts are embedded in the binary
+      # They will be installed automatically on first run
+      system "#{bin}/claude-dashboard", "setup" rescue nil
+    caveats: |
+      Setup is automatic on first run, or run manually:
+        claude-dashboard setup
+
+      This will:
+      - Install helper scripts to ~/.local/bin/
+      - Configure ~/.tmux.conf for F12 mouse toggle
+      - Add status bar with version info
+
+      To start using claude-dashboard:
+        claude-dashboard
