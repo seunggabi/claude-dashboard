@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
@@ -150,10 +151,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.err = msg.Err
 		} else {
 			m.sessions = msg.Sessions
-			// Update resource info
+			// Build process table once, then aggregate per-session.
+			procTable := monitor.GetProcessTable()
 			for i := range m.sessions {
 				if m.sessions[i].PID != "" {
-					info := monitor.GetChildProcessInfo(m.sessions[i].PID)
+					info := monitor.GetChildProcessInfo(m.sessions[i].PID, procTable)
 					m.sessions[i].CPU = info.CPU
 					m.sessions[i].Memory = info.Memory
 				}
@@ -161,6 +163,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		if m.cursor >= len(m.sessions) && m.cursor > 0 {
 			m.cursor = len(m.sessions) - 1
+		}
+		// Clamp scrollOffset now that session count may have changed.
+		visibleRows := m.visibleSessionRows()
+		if m.scrollOffset > len(m.sessions)-visibleRows {
+			m.scrollOffset = len(m.sessions) - visibleRows
+		}
+		if m.scrollOffset < 0 {
+			m.scrollOffset = 0
 		}
 		return m, nil
 
@@ -473,13 +483,6 @@ func (m Model) View() string {
 	switch m.view {
 	case ViewDashboard:
 		visibleRows := m.visibleSessionRows()
-		// Clamp scrollOffset
-		if m.scrollOffset > len(sessions)-visibleRows {
-			m.scrollOffset = len(sessions) - visibleRows
-		}
-		if m.scrollOffset < 0 {
-			m.scrollOffset = 0
-		}
 		content := ui.RenderDashboard(sessions, m.cursor, m.width, m.scrollOffset, visibleRows)
 		b.WriteString(content)
 		lines := strings.Count(content, "\n")
@@ -555,7 +558,7 @@ func (m Model) visibleSessionRows() int {
 // Commands
 
 func (m Model) refreshSessions() tea.Msg {
-	sessions, err := m.manager.List()
+	sessions, err := m.manager.List(context.Background())
 	return SessionsMsg{Sessions: sessions, Err: err}
 }
 
@@ -567,7 +570,7 @@ func (m Model) attachSession(name string) tea.Cmd {
 
 func (m Model) killSession(name string) tea.Cmd {
 	return func() tea.Msg {
-		err := m.manager.Kill(name)
+		err := m.manager.Kill(context.Background(), name)
 		return KillMsg{Err: err}
 	}
 }
@@ -575,9 +578,10 @@ func (m Model) killSession(name string) tea.Cmd {
 func (m Model) killIdleSessions() tea.Cmd {
 	return func() tea.Msg {
 		idleSessions := m.getIdleSessions()
+		ctx := context.Background()
 		var errors []string
 		for _, s := range idleSessions {
-			if err := m.manager.Kill(s.Name); err != nil {
+			if err := m.manager.Kill(ctx, s.Name); err != nil {
 				errors = append(errors, fmt.Sprintf("%s: %v", s.Name, err))
 			}
 		}
@@ -600,14 +604,14 @@ func (m Model) getIdleSessions() []session.Session {
 
 func (m Model) createSession(name, dir string) tea.Cmd {
 	return func() tea.Msg {
-		err := m.manager.Create(name, dir, "")
+		err := m.manager.Create(context.Background(), name, dir, "")
 		return CreateMsg{Err: err}
 	}
 }
 
 func (m Model) fetchLogs(name string) tea.Cmd {
 	return func() tea.Msg {
-		content, err := m.manager.GetLogs(name, m.cfg.LogHistory)
+		content, err := m.manager.GetLogs(context.Background(), name, m.cfg.LogHistory)
 		return LogsMsg{Content: content, Err: err}
 	}
 }
@@ -732,5 +736,5 @@ func CreateSession(name, projectDir, claudeArgs string) error {
 		return fmt.Errorf("tmux is required: %w", err)
 	}
 	mgr := session.NewManager(client)
-	return mgr.Create(name, projectDir, claudeArgs)
+	return mgr.Create(context.Background(), name, projectDir, claudeArgs)
 }

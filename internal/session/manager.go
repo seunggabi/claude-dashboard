@@ -1,12 +1,24 @@
 package session
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
 	"github.com/seunggabi/claude-dashboard/internal/conversation"
 	"github.com/seunggabi/claude-dashboard/internal/tmux"
 )
+
+// dangerousShellChars lists shell metacharacters that must not appear in claude arguments.
+const dangerousShellChars = "`;|&(){}$<>\n\r"
+
+// validateClaudeArgs returns an error if args contains dangerous shell metacharacters.
+func validateClaudeArgs(args string) error {
+	if strings.ContainsAny(args, dangerousShellChars) {
+		return fmt.Errorf("claudeArgs contains dangerous shell characters")
+	}
+	return nil
+}
 
 // Manager handles session CRUD operations.
 type Manager struct {
@@ -23,19 +35,24 @@ func NewManager(client *tmux.Client) *Manager {
 }
 
 // List returns all Claude sessions.
-func (m *Manager) List() ([]Session, error) {
-	return m.detector.Detect()
+func (m *Manager) List(ctx context.Context) ([]Session, error) {
+	return m.detector.Detect(ctx)
 }
 
 // Create creates a new Claude session with optional claude arguments.
-func (m *Manager) Create(name, projectDir, claudeArgs string) error {
+func (m *Manager) Create(ctx context.Context, name, projectDir, claudeArgs string) error {
+	if claudeArgs != "" {
+		if err := validateClaudeArgs(claudeArgs); err != nil {
+			return err
+		}
+	}
 	sessionName := SessionPrefix + name
 	command := "claude"
 	if claudeArgs != "" {
 		command = "claude " + claudeArgs
 	}
 
-	err := m.client.NewSession(sessionName, projectDir, command)
+	err := m.client.NewSession(ctx, sessionName, projectDir, command)
 	if err != nil {
 		return fmt.Errorf("failed to create session %s: %w", sessionName, err)
 	}
@@ -43,8 +60,8 @@ func (m *Manager) Create(name, projectDir, claudeArgs string) error {
 }
 
 // Kill terminates a session.
-func (m *Manager) Kill(name string) error {
-	err := m.client.KillSession(name)
+func (m *Manager) Kill(ctx context.Context, name string) error {
+	err := m.client.KillSession(ctx, name)
 	if err != nil {
 		return fmt.Errorf("failed to kill session %s: %w", name, err)
 	}
@@ -52,11 +69,11 @@ func (m *Manager) Kill(name string) error {
 }
 
 // GetLogs returns the captured pane content for a session.
-func (m *Manager) GetLogs(name string, lines int) (string, error) {
+func (m *Manager) GetLogs(ctx context.Context, name string, lines int) (string, error) {
 	if lines <= 0 {
 		lines = 1000
 	}
-	return m.client.CapturePaneContent(name, lines)
+	return m.client.CapturePaneContent(ctx, name, lines)
 }
 
 // GetConversation returns the formatted conversation log for a session.

@@ -128,9 +128,17 @@ func truncate(s string, maxLen int) string {
 		return s
 	}
 	if maxLen <= 3 {
-		return s[:maxLen]
+		runes := []rune(s)
+		if maxLen > len(runes) {
+			maxLen = len(runes)
+		}
+		return string(runes[:maxLen])
 	}
-	return s[:maxLen-3] + "..."
+	runes := []rune(s)
+	if maxLen-3 > len(runes) {
+		return s
+	}
+	return string(runes[:maxLen-3]) + "..."
 }
 
 func truncatePath(s string, maxLen int) string {

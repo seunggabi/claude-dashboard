@@ -2,6 +2,7 @@ package session
 
 import (
 	"fmt"
+	"strings"
 	"time"
 )
 
@@ -66,7 +67,7 @@ func (s *Session) StatusString() string {
 
 // DisplayName returns the display name without the cd- prefix.
 func (s *Session) DisplayName() string {
-	return s.Name
+	return strings.TrimPrefix(s.Name, SessionPrefix)
 }
 
 // SessionPrefix is the prefix for claude-dashboard managed sessions.

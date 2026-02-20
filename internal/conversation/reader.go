@@ -98,6 +98,8 @@ type msgEntry struct {
 }
 
 // parseJSONL reads a .jsonl file and extracts conversation messages.
+// When maxMessages > 0 it uses a ring buffer so only the last N messages
+// are kept in memory instead of reading everything then slicing.
 func parseJSONL(path string, maxMessages int) ([]Message, error) {
 	f, err := os.Open(path)
 	if err != nil {
@@ -105,43 +107,75 @@ func parseJSONL(path string, maxMessages int) ([]Message, error) {
 	}
 	defer f.Close()
 
-	var messages []Message
 	scanner := bufio.NewScanner(f)
 	scanner.Buffer(make([]byte, 0, 1024*1024), 10*1024*1024) // 10MB max line
 
+	if maxMessages <= 0 {
+		// No limit: collect all messages.
+		var messages []Message
+		for scanner.Scan() {
+			if msg, ok := scanLine(scanner.Bytes()); ok {
+				messages = append(messages, msg)
+			}
+		}
+		return messages, nil
+	}
+
+	// Ring buffer: keep only the last maxMessages entries.
+	ring := make([]Message, maxMessages)
+	head := 0  // next write position
+	count := 0 // total messages seen
+
 	for scanner.Scan() {
-		var entry jsonlEntry
-		if err := json.Unmarshal(scanner.Bytes(), &entry); err != nil {
+		msg, ok := scanLine(scanner.Bytes())
+		if !ok {
 			continue
 		}
-
-		if entry.Type != "user" && entry.Type != "assistant" {
-			continue
-		}
-		if entry.Message == nil {
-			continue
-		}
-
-		content := extractContent(entry.Message)
-		if content == "" {
-			continue
-		}
-
-		ts, _ := time.Parse(time.RFC3339Nano, entry.Timestamp)
-
-		messages = append(messages, Message{
-			Role:      entry.Message.Role,
-			Content:   content,
-			Timestamp: ts,
-		})
+		ring[head] = msg
+		head = (head + 1) % maxMessages
+		count++
 	}
 
-	// Return last N messages
-	if maxMessages > 0 && len(messages) > maxMessages {
-		messages = messages[len(messages)-maxMessages:]
+	if count == 0 {
+		return nil, nil
 	}
 
-	return messages, nil
+	// Reconstruct ordered slice from ring buffer.
+	size := count
+	if size > maxMessages {
+		size = maxMessages
+	}
+	result := make([]Message, size)
+	start := (head - size + maxMessages*2) % maxMessages // wrap-safe start
+	for i := 0; i < size; i++ {
+		result[i] = ring[(start+i)%maxMessages]
+	}
+	return result, nil
+}
+
+// scanLine parses a single JSONL scanner line and returns the Message and true
+// if it represents a user or assistant message with non-empty content.
+func scanLine(b []byte) (Message, bool) {
+	var entry jsonlEntry
+	if err := json.Unmarshal(b, &entry); err != nil {
+		return Message{}, false
+	}
+	if entry.Type != "user" && entry.Type != "assistant" {
+		return Message{}, false
+	}
+	if entry.Message == nil {
+		return Message{}, false
+	}
+	content := extractContent(entry.Message)
+	if content == "" {
+		return Message{}, false
+	}
+	ts, _ := time.Parse(time.RFC3339Nano, entry.Timestamp)
+	return Message{
+		Role:      entry.Message.Role,
+		Content:   content,
+		Timestamp: ts,
+	}, true
 }
 
 // extractContent extracts text content from a message.
