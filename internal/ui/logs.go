@@ -13,7 +13,6 @@ import (
 type LogView struct {
 	Viewport    viewport.Model
 	SessionName string
-	Content     string
 	Ready       bool
 }
 
@@ -30,7 +29,6 @@ func NewLogView(sessionName string, width, height int) LogView {
 
 // SetContent updates the log content.
 func (l *LogView) SetContent(content string) {
-	l.Content = content
 	l.Viewport.SetContent(content)
 	l.Viewport.GotoBottom()
 	l.Ready = true

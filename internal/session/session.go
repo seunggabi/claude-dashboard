@@ -2,6 +2,7 @@ package session
 
 import (
 	"fmt"
+	"strings"
 	"time"
 )
 
@@ -22,6 +23,7 @@ type Session struct {
 	Project   string
 	Status    Status
 	StartedAt time.Time
+	Activity  time.Time // Last activity timestamp from tmux
 	Attached  bool
 	PID       string
 	CPU       float64
@@ -65,7 +67,7 @@ func (s *Session) StatusString() string {
 
 // DisplayName returns the display name without the cd- prefix.
 func (s *Session) DisplayName() string {
-	return s.Name
+	return strings.TrimPrefix(s.Name, SessionPrefix)
 }
 
 // SessionPrefix is the prefix for claude-dashboard managed sessions.

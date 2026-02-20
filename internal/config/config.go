@@ -1,6 +1,7 @@
 package config
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"time"
@@ -36,7 +37,10 @@ func DefaultConfig() *Config {
 
 // ConfigDir returns the config directory path.
 func ConfigDir() string {
-	home, _ := os.UserHomeDir()
+	home, err := os.UserHomeDir()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "warning: could not determine home directory: %v\n", err)
+	}
 	return filepath.Join(home, ".claude-dashboard")
 }
 

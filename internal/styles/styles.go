@@ -40,9 +40,6 @@ var (
 		Foreground(ColorSuccess).
 		Bold(true)
 
-	Idle = lipgloss.NewStyle().
-		Foreground(ColorMuted)
-
 	Waiting = lipgloss.NewStyle().
 		Foreground(ColorWarning)
 
@@ -62,11 +59,6 @@ var (
 		Foreground(ColorSecondary).
 		Bold(true).
 		Underline(true)
-
-	Border = lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(ColorPrimary).
-		Padding(0, 1)
 
 	Confirm = lipgloss.NewStyle().
 		Foreground(ColorWarning).

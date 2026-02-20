@@ -24,32 +24,10 @@ func main() {
 
 	// Auto-setup on first run (before any command)
 	// Skip for --version, --help, and setup commands
-	if len(os.Args) > 1 {
-		cmd := os.Args[1]
-		if cmd != "--version" && cmd != "-v" && cmd != "--help" && cmd != "-h" && cmd != "setup" {
-			if !setup.CheckSetup() {
-				fmt.Println("📦 First time setup detected...")
-				fmt.Println()
-				if err := setup.Setup(false, version); err != nil {
-					fmt.Fprintf(os.Stderr, "Auto-setup failed: %v\n", err)
-					fmt.Println()
-					fmt.Println("You can run 'claude-dashboard setup' manually later.")
-					fmt.Println()
-				}
-			}
-		}
-	} else {
-		// No arguments - running TUI, do auto-setup
-		if !setup.CheckSetup() {
-			fmt.Println("📦 First time setup detected...")
-			fmt.Println()
-			if err := setup.Setup(false, version); err != nil {
-				fmt.Fprintf(os.Stderr, "Auto-setup failed: %v\n", err)
-				fmt.Println()
-				fmt.Println("You can run 'claude-dashboard setup' manually later.")
-				fmt.Println()
-			}
-		}
+	skipAutoSetup := len(os.Args) > 1 && (os.Args[1] == "--version" || os.Args[1] == "-v" ||
+		os.Args[1] == "--help" || os.Args[1] == "-h" || os.Args[1] == "setup")
+	if !skipAutoSetup {
+		runAutoSetup()
 	}
 
 	if len(os.Args) > 1 {
@@ -138,6 +116,20 @@ func main() {
 	if err := app.Run(); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
+	}
+}
+
+// runAutoSetup runs first-time setup if not already configured.
+func runAutoSetup() {
+	if !setup.CheckSetup() {
+		fmt.Println("📦 First time setup detected...")
+		fmt.Println()
+		if err := setup.Setup(false, version); err != nil {
+			fmt.Fprintf(os.Stderr, "Auto-setup failed: %v\n", err)
+			fmt.Println()
+			fmt.Println("You can run 'claude-dashboard setup' manually later.")
+			fmt.Println()
+		}
 	}
 }
 
