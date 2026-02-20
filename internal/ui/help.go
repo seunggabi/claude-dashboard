@@ -36,7 +36,7 @@ func RenderHelp(width int) string {
 				{"K", "Kill session (with confirm)"},
 				{"ctrl+k", "Kill all idle sessions"},
 				{"l", "View session logs"},
-				{"ctrl+s", "Save pane history (in session)"},
+				{"ctrl+s", "Save pane history (when attached to session)"},
 				{"d", "View session detail"},
 				{"r", "Refresh session list"},
 			},

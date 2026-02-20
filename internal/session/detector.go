@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os/exec"
 	"strings"
+	"time"
 
 	"github.com/seunggabi/claude-dashboard/internal/tmux"
 )
@@ -44,13 +45,14 @@ func (d *Detector) Detect() ([]Session, error) {
 			Project:   extractProject(raw.Name, raw.Path),
 			Status:    StatusUnknown,
 			StartedAt: raw.Created,
+			Activity:  raw.Activity,
 			Attached:  raw.Attached,
 			Path:      raw.Path,
 			Managed:   true,
 		}
 
-		// Detect status from pane content
-		s.Status = d.detectStatus(raw.Name)
+		// Detect status from pane content and activity timestamp
+		s.Status = d.detectStatus(raw.Name, raw.Activity)
 
 		// Get PID
 		pid, err := d.client.GetSessionPID(raw.Name)
@@ -158,33 +160,48 @@ func getProcessCWD(pid string) string {
 	return ""
 }
 
-// detectStatus determines session status by examining pane content.
-func (d *Detector) detectStatus(name string) Status {
-	content, err := d.client.CapturePaneContent(name, 5)
+// detectStatus determines session status by examining activity timestamp and pane content.
+func (d *Detector) detectStatus(name string, lastActivity time.Time) Status {
+	// If activity is very recent (within 2 seconds), consider it active
+	// This handles cases where output is streaming but prompt is not visible yet
+	idleThreshold := 2 * time.Second
+	if !lastActivity.IsZero() && time.Since(lastActivity) < idleThreshold {
+		return StatusActive
+	}
+
+	// If no recent activity, check pane content to distinguish idle vs waiting
+	content, err := d.client.CapturePaneContent(name, 20) // Increased from 5 to 20 lines
 	if err != nil {
-		return StatusUnknown
+		return StatusIdle
 	}
 
 	lines := strings.Split(content, "\n")
-	// Check last non-empty lines
-	for i := len(lines) - 1; i >= 0 && i >= len(lines)-5; i-- {
+	hasPrompt := false
+
+	// Check last 20 lines for status indicators
+	for i := len(lines) - 1; i >= 0 && i >= len(lines)-20; i-- {
 		line := strings.TrimSpace(lines[i])
 		if line == "" {
 			continue
 		}
-		// Waiting for input
+
+		// Waiting for input (confirmation prompts)
 		if strings.Contains(line, "?") || strings.Contains(line, "Y/n") || strings.Contains(line, "y/N") {
 			return StatusWaiting
 		}
+
 		// Prompt visible = idle
 		if strings.HasPrefix(line, ">") || strings.Contains(line, "❯") || strings.Contains(line, "$") {
-			return StatusIdle
+			hasPrompt = true
 		}
-		// Otherwise likely active
-		return StatusActive
 	}
 
-	return StatusIdle
+	// If prompt found, it's idle. Otherwise, unknown.
+	if hasPrompt {
+		return StatusIdle
+	}
+
+	return StatusIdle // Default to idle when no recent activity
 }
 
 // extractProject derives project name from session name or path.

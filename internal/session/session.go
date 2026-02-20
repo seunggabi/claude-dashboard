@@ -22,6 +22,7 @@ type Session struct {
 	Project   string
 	Status    Status
 	StartedAt time.Time
+	Activity  time.Time // Last activity timestamp from tmux
 	Attached  bool
 	PID       string
 	CPU       float64
