@@ -34,7 +34,9 @@ func RenderHelp(width int) string {
 			keys: []struct{ key, desc string }{
 				{"n", "Create new session"},
 				{"K", "Kill session (with confirm)"},
+				{"ctrl+k", "Kill all idle sessions"},
 				{"l", "View session logs"},
+				{"ctrl+s", "Save pane history (in session)"},
 				{"d", "View session detail"},
 				{"r", "Refresh session list"},
 			},

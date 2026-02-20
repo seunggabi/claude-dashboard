@@ -15,6 +15,21 @@ var mouseToggleScript []byte
 //go:embed scripts/tmux-status-bar.sh
 var statusBarScript []byte
 
+//go:embed scripts/tmux-save-history.sh
+var saveHistoryScript []byte
+
+// scriptInfo holds information about a helper script
+type scriptInfo struct {
+	name    string
+	content []byte
+}
+
+var helperScripts = []scriptInfo{
+	{"claude-dashboard-mouse-toggle", mouseToggleScript},
+	{"claude-dashboard-status-bar", statusBarScript},
+	{"claude-dashboard-save-history", saveHistoryScript},
+}
+
 // InstallScripts installs the helper scripts to ~/.local/bin
 func InstallScripts() error {
 	homeDir, err := os.UserHomeDir()
@@ -27,16 +42,12 @@ func InstallScripts() error {
 		return fmt.Errorf("failed to create bin directory: %w", err)
 	}
 
-	// Install mouse toggle script
-	mouseTogglePath := filepath.Join(binDir, "claude-dashboard-mouse-toggle")
-	if err := os.WriteFile(mouseTogglePath, mouseToggleScript, 0755); err != nil {
-		return fmt.Errorf("failed to write mouse toggle script: %w", err)
-	}
-
-	// Install status bar script
-	statusBarPath := filepath.Join(binDir, "claude-dashboard-status-bar")
-	if err := os.WriteFile(statusBarPath, statusBarScript, 0755); err != nil {
-		return fmt.Errorf("failed to write status bar script: %w", err)
+	// Install all helper scripts
+	for _, script := range helperScripts {
+		scriptPath := filepath.Join(binDir, script.name)
+		if err := os.WriteFile(scriptPath, script.content, 0755); err != nil {
+			return fmt.Errorf("failed to write %s: %w", script.name, err)
+		}
 	}
 
 	return nil
@@ -75,7 +86,8 @@ func SetupTmuxConfig() error {
 		// Skip lines that reference old scripts or duplicate bindings
 		if strings.Contains(line, "claude-dashboard-version-check") ||
 			strings.Contains(line, "claude-dashboard-mouse-toggle") ||
-			strings.Contains(line, "claude-dashboard-status-bar") {
+			strings.Contains(line, "claude-dashboard-status-bar") ||
+			strings.Contains(line, "claude-dashboard-save-history") {
 			continue
 		}
 
@@ -99,6 +111,9 @@ func SetupTmuxConfig() error {
 	config := `
 # claude-dashboard: F12 key binding for mouse mode toggle
 bind-key -n F12 run-shell "~/.local/bin/claude-dashboard-mouse-toggle"
+
+# claude-dashboard: Ctrl+S key binding for saving pane history
+bind-key -n C-s run-shell "~/.local/bin/claude-dashboard-save-history"
 
 # claude-dashboard: Status bar with version check and mouse status
 set -g status-right-length 80
@@ -227,6 +242,7 @@ func Setup(silent bool, version string) error {
 		fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
 		fmt.Println()
 		fmt.Println("  Press F12 in tmux to toggle mouse mode")
+		fmt.Println("  Press Ctrl+S in tmux to save entire pane history to file")
 		fmt.Println("  Check the status bar for version and mouse status")
 		fmt.Println()
 	}
@@ -242,15 +258,13 @@ func CheckSetup() bool {
 	}
 
 	binDir := filepath.Join(homeDir, ".local", "bin")
-	mouseTogglePath := filepath.Join(binDir, "claude-dashboard-mouse-toggle")
-	statusBarPath := filepath.Join(binDir, "claude-dashboard-status-bar")
 
-	// Check if both scripts exist
-	if _, err := os.Stat(mouseTogglePath); err != nil {
-		return false
-	}
-	if _, err := os.Stat(statusBarPath); err != nil {
-		return false
+	// Check if all helper scripts exist
+	for _, script := range helperScripts {
+		scriptPath := filepath.Join(binDir, script.name)
+		if _, err := os.Stat(scriptPath); err != nil {
+			return false
+		}
 	}
 
 	return true

@@ -36,7 +36,7 @@ claude-dashboard setup
 
 **Setup includes:**
 - ✅ Installs helper scripts to `~/.local/bin/`
-- ✅ Configures `~/.tmux.conf` for F12 mouse toggle
+- ✅ Configures `~/.tmux.conf` for F12 mouse toggle and Ctrl+S history save
 - ✅ Adds status bar with version info
 - ✅ Enables mouse mode by default
 
@@ -71,12 +71,19 @@ claude-dashboard   # Launch the TUI dashboard
 ```
 
 
-### Alias (Optional)
+### 💡 Pro Tip: Super Fast Session Creation
 
-`cdn` as a shortcut for `claude-dashboard new`:
+Type just **`cdn`** instead of `claude-dashboard new` - save time with every session!
 
 ```bash
+# One-line setup (add to your ~/.zshrc or ~/.bashrc for permanent use)
 source <(curl -fsSL https://raw.githubusercontent.com/seunggabi/claude-dashboard/main/alias.sh)
+```
+
+**Example:**
+```bash
+# Before: claude-dashboard new my-project --path ~/code/foo
+# After:  cdn my-project --path ~/code/foo  ⚡️
 ```
 
 ## Why claude-dashboard
@@ -131,8 +138,9 @@ If you've used [k9s](https://k9scli.io/), you'll feel right at home. Vim-style n
 | `enter`   | Attach to session                         |
 | `n`       | Create new session                        |
 | `K`       | Kill session (with confirmation)          |
-| `ctrl+k`  | Kill all idle sessions (with confirmation)|
+| `Ctrl+K`  | Kill all idle sessions (with confirmation)|
 | `l`       | View session logs                         |
+| `Ctrl+S`  | Save entire pane history to file (in attached session) |
 | `d`       | Session detail view                       |
 | `/`       | Filter / search sessions                  |
 | `r`       | Manual refresh                            |
@@ -146,7 +154,7 @@ If you've used [k9s](https://k9scli.io/), you'll feel right at home. Vim-style n
 |-----------------|-------------------|
 | `↑` / `k`       | Scroll up         |
 | `↓` / `j`       | Scroll down       |
-| `PgUp` / `PgDn` | Page up / down    |
+| `PgUp` / `PgDn` | Page up / down (macOS: `Fn+↑` / `Fn+↓`) |
 | `esc`           | Back to dashboard |
 | `q`             | Quit              |
 
@@ -183,18 +191,23 @@ Mouse mode is enabled by default for smooth scrolling. To copy text:
 
 **Scrolling through history**:
 - Press `Ctrl+B [` to enter copy mode
-- Use arrow keys, `PgUp`/`PgDn`, or vi keys (`j`/`k`) to scroll
+- Use arrow keys, `PgUp`/`PgDn` (macOS: `Fn+↑`/`Fn+↓`), or vi keys (`j`/`k`) to scroll
 - Press `q` or `Esc` to exit copy mode
 
 **Copy text while Claude is actively outputting**:
-- **Method 1 (Recommended)**: Press `Ctrl+B [` to freeze the screen in copy mode, then select and copy text
-- **Method 2**: Press `Ctrl+S` to pause output, copy text, then `Ctrl+Q` to resume
+- Press `Ctrl+B [` to freeze the screen in copy mode, then select and copy text
 
 **Toggle Mouse Mode**:
 - Press `F12` to toggle mouse mode on/off (super easy!)
 - Toggle displays message: `Mouse: ON` or `Mouse: OFF`
 - **ON** (default): Mouse wheel scrolling enabled, use `Option`/`Shift` + drag to copy text
 - **OFF**: Easy text selection by dragging (no modifier key needed), scroll with `Ctrl+B [`
+
+**Save Pane History**:
+- Press `Ctrl+S` (inside an attached tmux session) to save the entire scrollback history to a file
+- Files are saved to `~/Desktop/` (or `~/` if Desktop doesn't exist) with timestamp: `tmux-history_<session-name>_<timestamp>.txt`
+- Captures everything from the beginning of the pane's history, not just what's visible on screen
+- Perfect for preserving long Claude conversations or debugging sessions
 
 **Setup**:
 Setup is **automatic on first run**, or you can run it manually:
@@ -203,8 +216,8 @@ claude-dashboard setup
 ```
 
 This will:
-- Install helper scripts (`claude-dashboard-mouse-toggle`, `claude-dashboard-status-bar`) to `~/.local/bin/`
-- Add F12 key binding to `~/.tmux.conf`
+- Install helper scripts (`claude-dashboard-mouse-toggle`, `claude-dashboard-status-bar`, `claude-dashboard-save-history`) to `~/.local/bin/`
+- Add F12 key binding (mouse toggle) and Ctrl+S key binding (save history) to `~/.tmux.conf`
 - Configure status bar with version check and mouse status
 - Enable mouse mode by default
 - Reload tmux configuration if tmux is running
@@ -237,7 +250,7 @@ Combine options freely: `claude-dashboard new my-project --path ~/code/foo --arg
 
 ### Kill Session
 
-Press `K` to terminate a session. Always shows a confirmation prompt before killing (safety first).
+Press `K` to terminate a single session. Press `Ctrl+K` to kill all idle sessions at once. Both actions always show a confirmation prompt before killing (safety first).
 
 ### Filter / Search
 

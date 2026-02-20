@@ -35,7 +35,7 @@ func HelpBar(width int, context string) string {
 	var hints string
 	switch context {
 	case "dashboard":
-		hints = "↑/↓:nav  enter:attach  n:new  K:kill  l:logs  d:detail  /:filter  r:refresh  ?:help  q:quit"
+		hints = "↑/↓:nav  enter:attach  n:new  K:kill  ^k:kill-idle  l:logs  ^s:save  d:detail  /:filter  ?:help  q:quit"
 	case "logs":
 		hints = "↑/↓/j/k:scroll  pgup/pgdn:page  esc:back  q:quit"
 	case "detail":
