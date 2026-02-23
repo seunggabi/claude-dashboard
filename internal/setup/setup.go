@@ -109,6 +109,9 @@ func SetupTmuxConfig() error {
 
 	// Configuration to add
 	config := `
+# claude-dashboard: Increase scrollback buffer for full history capture
+set -g history-limit 50000
+
 # claude-dashboard: F12 key binding for mouse mode toggle
 bind-key -n F12 run-shell "~/.local/bin/claude-dashboard-mouse-toggle"
 
