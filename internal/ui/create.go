@@ -25,7 +25,7 @@ func NewCreateForm(defaultDir string) CreateForm {
 	nameInput.Focus()
 
 	dirInput := textinput.New()
-	dirInput.Placeholder = "/path/to/project"
+	dirInput.Placeholder = "/absolute/path/to/project"
 	dirInput.CharLimit = 200
 	dirInput.Width = 60
 	if defaultDir != "" {

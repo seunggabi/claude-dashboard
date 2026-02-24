@@ -3,11 +3,29 @@ package session
 import (
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/seunggabi/claude-dashboard/internal/conversation"
 	"github.com/seunggabi/claude-dashboard/internal/tmux"
 )
+
+// resolvePath expands ~ and converts relative paths to absolute.
+func resolvePath(path string) (string, error) {
+	if strings.HasPrefix(path, "~/") {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return "", fmt.Errorf("cannot expand ~: %w", err)
+		}
+		path = filepath.Join(home, path[2:])
+	}
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return "", fmt.Errorf("cannot resolve path: %w", err)
+	}
+	return abs, nil
+}
 
 // dangerousShellChars lists shell metacharacters that must not appear in claude arguments.
 const dangerousShellChars = "`;|&(){}$<>\n\r"
@@ -46,6 +64,23 @@ func (m *Manager) Create(ctx context.Context, name, projectDir, claudeArgs strin
 			return err
 		}
 	}
+
+	// Resolve and validate project directory
+	if projectDir != "" {
+		resolved, err := resolvePath(projectDir)
+		if err != nil {
+			return err
+		}
+		info, err := os.Stat(resolved)
+		if err != nil {
+			return fmt.Errorf("directory does not exist: %s", resolved)
+		}
+		if !info.IsDir() {
+			return fmt.Errorf("path is not a directory: %s", resolved)
+		}
+		projectDir = resolved
+	}
+
 	sessionName := SessionPrefix + name
 	command := "claude"
 	if claudeArgs != "" {
