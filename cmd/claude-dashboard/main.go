@@ -59,13 +59,15 @@ func main() {
 			name := ""
 			claudeArgs := ""
 
-			// Parse args: first non-flag arg is name, rest are flags
+			// Parse args: first non-flag arg (not starting with "-") is name
+			// Flags starting with "-" or "--" that are not --path/--args are passed as claude args
 			argStart := 2
-			if len(os.Args) > 2 && !strings.HasPrefix(os.Args[2], "--") {
+			if len(os.Args) > 2 && !strings.HasPrefix(os.Args[2], "-") {
 				name = os.Args[2]
 				argStart = 3
 			}
 
+			var extraClaudeArgs []string
 			for i := argStart; i < len(os.Args); i++ {
 				switch os.Args[i] {
 				case "--path":
@@ -78,6 +80,19 @@ func main() {
 						claudeArgs = os.Args[i+1]
 						i++
 					}
+				default:
+					// Pass unknown flags (e.g. -r, -c, --resume) as claude args
+					extraClaudeArgs = append(extraClaudeArgs, os.Args[i])
+				}
+			}
+
+			// Merge --args value and extra flags
+			if len(extraClaudeArgs) > 0 {
+				extra := strings.Join(extraClaudeArgs, " ")
+				if claudeArgs != "" {
+					claudeArgs = claudeArgs + " " + extra
+				} else {
+					claudeArgs = extra
 				}
 			}
 
