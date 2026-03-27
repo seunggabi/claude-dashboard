@@ -94,20 +94,18 @@ func TestCreate_filePathReturnsNotADirectoryError(t *testing.T) {
 	}
 }
 
-func TestCreate_tildeDirectoryExpandsAndValidates(t *testing.T) {
+func TestResolvePath_bareTildeExpandsToHome(t *testing.T) {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		t.Skip("cannot determine home dir")
 	}
-	// Home dir exists, so resolution should succeed and reach tmux (nil client panics).
-	// We expect a panic/nil-deref only if path validation passes — use recover to confirm.
-	mgr := &Manager{client: nil}
-	func() {
-		defer func() { recover() }() // nil client will panic inside NewSession
-		_ = mgr.Create(context.Background(), "test", "~/", "")
-		_ = home // used above
-	}()
-	// If we get here without a "directory does not exist" error, ~ expanded correctly.
+	got, err := resolvePath("~")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got != home {
+		t.Errorf("expected %q, got %q", home, got)
+	}
 }
 
 // ---------------------------------------------------------------------------
