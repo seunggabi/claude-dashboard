@@ -263,6 +263,28 @@ claude-dashboard new --path ~/my/project
 
 # Pass arguments to claude
 claude-dashboard new --args "--model opus"
+
+# Pass Claude CLI flags directly (no --args needed)
+claude-dashboard new -r                # Resume last conversation (interactive picker)
+claude-dashboard new -c                # Continue most recent conversation
+claude-dashboard new --model opus      # Any unknown flags are forwarded to claude
+```
+
+#### Claude CLI Pass-through Options
+
+Any flags not recognized by claude-dashboard (i.e., other than `--path` and `--args`) are automatically forwarded to the `claude` command. Common examples:
+
+| Flag | Description |
+|------|-------------|
+| `-r`, `--resume` | Resume a conversation by session ID, or open interactive picker |
+| `-c`, `--continue` | Continue the most recent conversation in the current directory |
+| `--model <model>` | Specify model (e.g., `opus`, `sonnet`) |
+
+You can combine these with claude-dashboard options:
+
+```bash
+claude-dashboard new my-project --path ~/code/foo -c
+claude-dashboard new my-project -r
 ```
 
 If a session with the same name already exists, it automatically attaches to it instead of creating a new one.
@@ -371,6 +393,10 @@ claude-dashboard new my-project --path ~/code/foo
 
 # Pass arguments to claude (e.g., --model opus)
 claude-dashboard new my-project --args "--model opus"
+
+# Pass Claude CLI flags directly
+claude-dashboard new my-project -r     # Resume conversation
+claude-dashboard new my-project -c     # Continue most recent conversation
 
 # Combine options
 claude-dashboard new my-project --path ~/code/foo --args "--model sonnet"
