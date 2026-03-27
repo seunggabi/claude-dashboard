@@ -84,6 +84,11 @@ source <(curl -fsSL https://raw.githubusercontent.com/seunggabi/claude-dashboard
 ```bash
 # Before: claude-dashboard new my-project --path ~/code/foo
 # After:  cdn my-project --path ~/code/foo  ⚡️
+
+# Resume or continue conversations instantly
+cdn -r                                 # Resume (interactive picker)
+cdn -c                                 # Continue most recent conversation
+cdn my-project -r                      # Resume with session name
 ```
 
 ### 🔄 Upgrade
