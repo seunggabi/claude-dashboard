@@ -282,7 +282,11 @@ func (m Model) handleDashboardKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.view = ViewCreate
 		defaultDir := m.cfg.DefaultDir
 		if defaultDir == "" {
-			defaultDir, _ = os.Getwd()
+			if cwd, err := os.Getwd(); err == nil {
+				defaultDir = cwd
+			} else {
+				defaultDir, _ = os.UserHomeDir()
+			}
 		}
 		m.createForm = ui.NewCreateForm(defaultDir)
 		return m, m.createForm.NameInput.Focus()

@@ -13,6 +13,9 @@ import (
 
 // resolvePath expands ~ and converts relative paths to absolute.
 func resolvePath(path string) (string, error) {
+	if path == "~" {
+		return os.UserHomeDir()
+	}
 	if strings.HasPrefix(path, "~/") {
 		home, err := os.UserHomeDir()
 		if err != nil {
