@@ -280,7 +280,11 @@ func (m Model) handleDashboardKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 	case "n":
 		m.view = ViewCreate
-		m.createForm = ui.NewCreateForm(m.cfg.DefaultDir)
+		defaultDir := m.cfg.DefaultDir
+		if defaultDir == "" {
+			defaultDir, _ = os.Getwd()
+		}
+		m.createForm = ui.NewCreateForm(defaultDir)
 		return m, m.createForm.NameInput.Focus()
 	case "K":
 		sessions := m.filteredSessions()
