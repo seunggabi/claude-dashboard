@@ -78,6 +78,14 @@ func (c *Client) NewSession(ctx context.Context, name, startDir, command string)
 	return cmd.Run()
 }
 
+// HasSession reports whether a session with exactly this name exists.
+func (c *Client) HasSession(ctx context.Context, name string) bool {
+	ctx, cancel := withTimeout(ctx)
+	defer cancel()
+	// "=" forces an exact match; a bare name also matches by prefix.
+	return exec.CommandContext(ctx, c.tmuxPath, "has-session", "-t", "="+name).Run() == nil
+}
+
 // KillSession kills a tmux session by name.
 func (c *Client) KillSession(ctx context.Context, name string) error {
 	if err := validateSessionName(name); err != nil {

@@ -1,12 +1,16 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	"github.com/seunggabi/claude-dashboard/internal/app"
+	"github.com/seunggabi/claude-dashboard/internal/config"
+	"github.com/seunggabi/claude-dashboard/internal/session"
 	"github.com/seunggabi/claude-dashboard/internal/setup"
 )
 
@@ -14,6 +18,7 @@ var version = "dev"
 
 func main() {
 	app.Version = version
+	session.SessionPrefix = config.Load().SessionPrefix
 	app.DrainStdin()
 
 	// Always update version cache on startup (important for Homebrew upgrades)
@@ -55,73 +60,30 @@ func main() {
 			}
 			os.Exit(0)
 		case "new":
-			path, _ := os.Getwd()
-			name := ""
-			claudeArgs := ""
-
-			// Parse args: first non-flag arg (not starting with "-") is name
-			// Flags starting with "-" or "--" that are not --path/--args are passed as claude args
-			argStart := 2
-			if len(os.Args) > 2 && !strings.HasPrefix(os.Args[2], "-") {
-				name = os.Args[2]
-				argStart = 3
+			name, path, claudeArgs := parseNewArgs(os.Args[2:])
+			if path == "" {
+				path, _ = os.Getwd()
 			}
-
-			var extraClaudeArgs []string
-			for i := argStart; i < len(os.Args); i++ {
-				switch os.Args[i] {
-				case "--path":
-					if i+1 < len(os.Args) {
-						path = os.Args[i+1]
-						i++
-					}
-				case "--args":
-					if i+1 < len(os.Args) {
-						claudeArgs = os.Args[i+1]
-						i++
-					}
-				default:
-					// Pass unknown flags (e.g. -r, -c, --resume) as claude args
-					extraClaudeArgs = append(extraClaudeArgs, os.Args[i])
-				}
-			}
-
-			// Merge --args value and extra flags
-			if len(extraClaudeArgs) > 0 {
-				extra := strings.Join(extraClaudeArgs, " ")
-				if claudeArgs != "" {
-					claudeArgs = claudeArgs + " " + extra
-				} else {
-					claudeArgs = extra
-				}
-			}
-
-			// Default name: path after home dir, e.g. ~/project/foo → project-foo
 			if name == "" {
 				homeDir, _ := os.UserHomeDir()
-				rel := path
-				if strings.HasPrefix(path, homeDir) {
-					rel = strings.TrimPrefix(path, homeDir)
-					rel = strings.TrimPrefix(rel, "/")
-				}
-				name = strings.ReplaceAll(rel, "/", "-")
-				if name == "" {
-					name = filepath.Base(path)
-				}
+				name = defaultSessionName(path, homeDir)
 			}
+			sessionName := session.SessionPrefix + name
 
-			sessionName := "cd-" + name
-
-			// If session already exists, just attach to it
-			if err := app.CreateSession(name, path, claudeArgs); err != nil {
-				// Session might already exist - try attaching
-				fmt.Printf("Attaching to existing session '%s'...\n", sessionName)
-			} else {
+			err := app.CreateSession(name, path, claudeArgs)
+			switch {
+			case err == nil:
 				fmt.Printf("Session '%s' created in %s\n", sessionName, path)
+			case errors.Is(err, session.ErrSessionExists):
+				fmt.Printf("Attaching to existing session '%s'...\n", sessionName)
+			default:
+				fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+				os.Exit(1)
 			}
 
 			if err := app.ExecAttach(sessionName); err != nil {
-				fmt.Fprintf(os.Stderr, "Error attaching: %v\n", err)
+				fmt.Fprintf(os.Stderr, "Error attaching: %v
+", err)
 				os.Exit(1)
 			}
 			os.Exit(0)
@@ -132,6 +94,51 @@ func main() {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
+}
+
+// parseNewArgs parses the arguments that follow "new". A leading argument that
+// is not a flag is the session name. --path and --args are consumed here;
+// every other argument is forwarded to claude.
+func parseNewArgs(args []string) (name, path, claudeArgs string) {
+	if len(args) > 0 && !strings.HasPrefix(args[0], "-") {
+		name = args[0]
+		args = args[1:]
+	}
+
+	var forwarded []string
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "--path":
+			if i+1 < len(args) {
+				path = args[i+1]
+				i++
+			}
+		case "--args":
+			if i+1 < len(args) {
+				forwarded = append(forwarded, args[i+1])
+				i++
+			}
+		default:
+			forwarded = append(forwarded, args[i])
+		}
+	}
+	return name, path, strings.Join(forwarded, " ")
+}
+
+// invalidNameChars matches characters that are not allowed in a session name.
+var invalidNameChars = regexp.MustCompile(`[^a-zA-Z0-9_-]`)
+
+// defaultSessionName derives a session name from a directory: the path
+// relative to home, with every invalid character replaced by "-".
+// ~/project/my.app becomes project-my-app.
+func defaultSessionName(path, homeDir string) string {
+	rel := path
+	if path == homeDir {
+		rel = filepath.Base(path)
+	} else if homeDir != "" && strings.HasPrefix(path, homeDir+"/") {
+		rel = strings.TrimPrefix(path, homeDir+"/")
+	}
+	return invalidNameChars.ReplaceAllString(rel, "-")
 }
 
 // runAutoSetup runs first-time setup if not already configured.

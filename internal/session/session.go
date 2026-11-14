@@ -71,4 +71,5 @@ func (s *Session) DisplayName() string {
 }
 
 // SessionPrefix is the prefix for claude-dashboard managed sessions.
-const SessionPrefix = "cd-"
+// main overrides it with session_prefix from the config file.
+var SessionPrefix = "cd-"

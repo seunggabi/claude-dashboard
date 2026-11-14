@@ -2,6 +2,7 @@ package session
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -40,6 +41,9 @@ func validateClaudeArgs(args string) error {
 	}
 	return nil
 }
+
+// ErrSessionExists is returned by Create when the session name is already taken.
+var ErrSessionExists = errors.New("session already exists")
 
 // Manager handles session CRUD operations.
 type Manager struct {
@@ -85,6 +89,10 @@ func (m *Manager) Create(ctx context.Context, name, projectDir, claudeArgs strin
 	}
 
 	sessionName := SessionPrefix + name
+	if m.client.HasSession(ctx, sessionName) {
+		return fmt.Errorf("%w: %s", ErrSessionExists, sessionName)
+	}
+
 	command := "claude"
 	if claudeArgs != "" {
 		command = "claude " + claudeArgs
