@@ -82,8 +82,7 @@ func main() {
 			}
 
 			if err := app.ExecAttach(sessionName); err != nil {
-				fmt.Fprintf(os.Stderr, "Error attaching: %v
-", err)
+				fmt.Fprintf(os.Stderr, "Error attaching: %v\n", err)
 				os.Exit(1)
 			}
 			os.Exit(0)
