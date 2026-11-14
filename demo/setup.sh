@@ -1,6 +1,9 @@
 # Prepares a throwaway environment for recording demo/demo.gif.
 # Sourced by demo.tape from the repository root; not meant to be run directly.
 
+# demo.tape writes its screenshots here.
+mkdir -p demo/shots
+
 # A temporary HOME and tmux socket keep the recording away from real config and sessions.
 export HOME="$(mktemp -d)"
 export TMUX_TMPDIR="$HOME"
