@@ -17,6 +17,7 @@ type ProcessInfo struct {
 type ProcessTableEntry struct {
 	PID  string
 	PPID string
+	TTY  string
 	CPU  float64
 	Mem  float64
 	Args string
@@ -27,7 +28,7 @@ type ProcessTable map[string]ProcessTableEntry
 
 // GetProcessTable runs ps once and returns a full process table.
 func GetProcessTable() ProcessTable {
-	cmd := exec.Command("ps", "-eo", "pid,ppid,%cpu,%mem,args")
+	cmd := exec.Command("ps", "-eo", "pid,ppid,tty,%cpu,%mem,args")
 	out, err := cmd.Output()
 	if err != nil {
 		return ProcessTable{}
@@ -37,17 +38,18 @@ func GetProcessTable() ProcessTable {
 	lines := strings.Split(string(out), "\n")
 	for _, line := range lines[1:] { // skip header
 		fields := strings.Fields(line)
-		if len(fields) < 5 {
+		if len(fields) < 6 {
 			continue
 		}
-		cpu, _ := strconv.ParseFloat(fields[2], 64)
-		mem, _ := strconv.ParseFloat(fields[3], 64)
+		cpu, _ := strconv.ParseFloat(fields[3], 64)
+		mem, _ := strconv.ParseFloat(fields[4], 64)
 		entry := ProcessTableEntry{
 			PID:  fields[0],
 			PPID: fields[1],
+			TTY:  fields[2],
 			CPU:  cpu,
 			Mem:  mem,
-			Args: strings.Join(fields[4:], " "),
+			Args: strings.Join(fields[5:], " "),
 		}
 		table[entry.PID] = entry
 	}

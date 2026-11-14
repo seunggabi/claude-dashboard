@@ -34,6 +34,10 @@ type Session struct {
 
 // Uptime returns the human-readable uptime string.
 func (s *Session) Uptime() string {
+	// Terminal sessions have no known start time.
+	if s.StartedAt.IsZero() {
+		return "-"
+	}
 	d := time.Since(s.StartedAt)
 	if d < time.Minute {
 		return fmt.Sprintf("%ds", int(d.Seconds()))

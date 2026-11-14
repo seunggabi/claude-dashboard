@@ -15,6 +15,3 @@ func TickCmd(interval time.Duration) tea.Cmd {
 		return TickMsg(t)
 	})
 }
-
-// DefaultInterval is the default refresh interval.
-const DefaultInterval = 2 * time.Second

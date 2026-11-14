@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -52,9 +53,11 @@ type Model struct {
 	width        int
 	height       int
 	err          error
-	confirmMsg   string
-	confirming   bool
-	killingIdle  bool // true when confirming bulk kill of idle sessions
+
+	// Kill confirmation. killTargets holds the sessions named in confirmMsg;
+	// it is non-nil only while the prompt is shown.
+	confirmMsg  string
+	killTargets []string
 
 	// Sub-views
 	logView    ui.LogView
@@ -73,11 +76,6 @@ type Model struct {
 type SessionsMsg struct {
 	Sessions []session.Session
 	Err      error
-}
-
-// AttachMsg signals to attach to a session.
-type AttachMsg struct {
-	Name string
 }
 
 // KillMsg signals session was killed.
@@ -151,34 +149,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.err = msg.Err
 		} else {
 			m.sessions = msg.Sessions
-			// Build process table once, then aggregate per-session.
-			procTable := monitor.GetProcessTable()
-			for i := range m.sessions {
-				if m.sessions[i].PID != "" {
-					info := monitor.GetChildProcessInfo(m.sessions[i].PID, procTable)
-					m.sessions[i].CPU = info.CPU
-					m.sessions[i].Memory = info.Memory
-				}
-			}
 		}
-		if m.cursor >= len(m.sessions) && m.cursor > 0 {
-			m.cursor = len(m.sessions) - 1
-		}
-		// Clamp scrollOffset now that session count may have changed.
-		visibleRows := m.visibleSessionRows()
-		if m.scrollOffset > len(m.sessions)-visibleRows {
-			m.scrollOffset = len(m.sessions) - visibleRows
-		}
-		if m.scrollOffset < 0 {
-			m.scrollOffset = 0
-		}
+		m.clampCursor()
 		return m, nil
 
 	case KillMsg:
 		if msg.Err != nil {
 			m.err = msg.Err
 		}
-		m.confirming = false
 		return m, m.refreshSessions
 
 	case CreateMsg:
@@ -197,16 +175,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.logView.SetContent(msg.Content)
 		return m, nil
 
-	case AttachMsg:
-		if !validSessionName.MatchString(msg.Name) {
-			m.err = fmt.Errorf("invalid session name: %s", msg.Name)
-			return m, nil
-		}
-		// Set attach target and quit Bubble Tea.
-		// Run() loop will drain stdin, then run tmux attach, then restart.
-		m.attachTarget = msg.Name
-		return m, tea.Quit
-
 	case tea.KeyMsg:
 		m.err = nil // Clear error on any key press
 		return m.handleKey(msg)
@@ -223,7 +191,7 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 
 	// Confirm mode
-	if m.confirming {
+	if m.killTargets != nil {
 		return m.handleConfirmKey(msg)
 	}
 
@@ -270,13 +238,18 @@ func (m Model) handleDashboardKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			}
 		}
 	case "enter":
-		sessions := m.filteredSessions()
-		if len(sessions) > 0 && m.cursor < len(sessions) {
-			if !sessions[m.cursor].Managed {
-				m.err = fmt.Errorf("terminal sessions cannot be attached (not a tmux session)")
+		if s, ok := m.selected(); ok {
+			if !s.Managed {
+				m.err = errors.New("terminal sessions cannot be attached (not a tmux session)")
 				return m, nil
 			}
-			return m, m.attachSession(sessions[m.cursor].Name)
+			if !validSessionName.MatchString(s.Name) {
+				m.err = fmt.Errorf("invalid session name: %s", s.Name)
+				return m, nil
+			}
+			// Quit Bubble Tea; the Run loop attaches, then restarts the dashboard.
+			m.attachTarget = s.Name
+			return m, tea.Quit
 		}
 	case "n":
 		m.view = ViewCreate
@@ -291,39 +264,28 @@ func (m Model) handleDashboardKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.createForm = ui.NewCreateForm(defaultDir)
 		return m, m.createForm.NameInput.Focus()
 	case "K":
-		sessions := m.filteredSessions()
-		if len(sessions) > 0 && m.cursor < len(sessions) {
-			if !sessions[m.cursor].Managed {
-				m.err = fmt.Errorf("terminal sessions cannot be killed from dashboard")
-				return m, nil
-			}
-			m.confirming = true
-			m.confirmMsg = fmt.Sprintf("Kill session '%s'? (y/n)", sessions[m.cursor].Name)
+		if s, ok := m.selected(); ok {
+			m.confirmKill(s)
 		}
 	case "ctrl+k":
-		// Kill all idle sessions
-		idleSessions := m.getIdleSessions()
-		if len(idleSessions) == 0 {
-			m.err = fmt.Errorf("no idle sessions to kill")
+		var idle []string
+		for _, s := range m.sessions {
+			if s.Managed && s.Status == session.StatusIdle {
+				idle = append(idle, s.Name)
+			}
+		}
+		if len(idle) == 0 {
+			m.err = errors.New("no idle sessions to kill")
 			return m, nil
 		}
-		m.confirming = true
-		m.killingIdle = true
-		m.confirmMsg = fmt.Sprintf("Kill %d idle session(s)? (y/n)", len(idleSessions))
+		m.killTargets = idle
+		m.confirmMsg = fmt.Sprintf("Kill %d idle session(s)? (y/n)", len(idle))
 	case "l":
-		sessions := m.filteredSessions()
-		if len(sessions) > 0 && m.cursor < len(sessions) {
-			s := sessions[m.cursor]
-			m.view = ViewLogs
-			m.logView = ui.NewLogView(s.Name, m.width, m.height)
-			if s.Managed {
-				return m, m.fetchLogs(s.Name)
-			}
-			return m, m.fetchConversation(s.Path)
+		if s, ok := m.selected(); ok {
+			return m, m.openLogs(s)
 		}
 	case "d":
-		sessions := m.filteredSessions()
-		if len(sessions) > 0 && m.cursor < len(sessions) {
+		if _, ok := m.selected(); ok {
 			m.view = ViewDetail
 		}
 	case "/":
@@ -359,22 +321,12 @@ func (m Model) handleDetailKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "q":
 		return m, tea.Quit
 	case "l":
-		sessions := m.filteredSessions()
-		if m.cursor < len(sessions) {
-			m.view = ViewLogs
-			s := sessions[m.cursor]
-			m.logView = ui.NewLogView(s.Name, m.width, m.height)
-			return m, m.fetchLogs(s.Name)
+		if s, ok := m.selected(); ok {
+			return m, m.openLogs(s)
 		}
 	case "K":
-		sessions := m.filteredSessions()
-		if m.cursor < len(sessions) {
-			if !sessions[m.cursor].Managed {
-				m.err = fmt.Errorf("terminal sessions cannot be killed from dashboard")
-				return m, nil
-			}
-			m.confirming = true
-			m.confirmMsg = fmt.Sprintf("Kill session '%s'? (y/n)", sessions[m.cursor].Name)
+		if s, ok := m.selected(); ok {
+			m.confirmKill(s)
 		}
 	}
 	return m, nil
@@ -418,21 +370,11 @@ func (m Model) handleHelpKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 func (m Model) handleConfirmKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "y", "Y":
-		if m.killingIdle {
-			// Kill all idle sessions
-			m.confirming = false
-			m.killingIdle = false
-			return m, m.killIdleSessions()
-		}
-		// Kill single session
-		sessions := m.filteredSessions()
-		if m.cursor < len(sessions) {
-			return m, m.killSession(sessions[m.cursor].Name)
-		}
-		m.confirming = false
+		targets := m.killTargets
+		m.killTargets = nil
+		return m, m.killSessions(targets)
 	case "n", "N", "esc":
-		m.confirming = false
-		m.killingIdle = false
+		m.killTargets = nil
 	}
 	return m, nil
 }
@@ -454,6 +396,7 @@ func (m Model) handleFilterKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	var cmd tea.Cmd
 	m.filterText, cmd = m.filterText.Update(msg)
 	m.filterQuery = m.filterText.Value()
+	m.clampCursor()
 	return m, cmd
 }
 
@@ -500,8 +443,7 @@ func (m Model) View() string {
 	case ViewLogs:
 		b.WriteString(ui.RenderLogView(m.logView, m.width))
 	case ViewDetail:
-		if m.cursor < len(sessions) {
-			s := sessions[m.cursor]
+		if s, ok := m.selected(); ok {
 			b.WriteString(ui.RenderDetail(&s, m.width))
 		}
 	case ViewCreate:
@@ -511,7 +453,7 @@ func (m Model) View() string {
 	}
 
 	// Confirm overlay
-	if m.confirming {
+	if m.killTargets != nil {
 		b.WriteString("\n")
 		b.WriteString(styles.Confirm.Render("  " + m.confirmMsg))
 	}
@@ -527,7 +469,14 @@ func (m Model) View() string {
 	b.WriteString("\n")
 	b.WriteString(ui.StatusBar(m.width, len(sessions), viewName, m.filterQuery))
 	b.WriteString("\n")
-	b.WriteString(ui.HelpBar(m.width, viewName))
+	helpContext := viewName
+	switch {
+	case m.killTargets != nil:
+		helpContext = "confirm"
+	case m.filtering:
+		helpContext = "filter"
+	}
+	b.WriteString(ui.HelpBar(m.width, helpContext))
 
 	return b.String()
 }
@@ -553,6 +502,58 @@ func (m Model) filteredSessions() []session.Session {
 	return session.FilterSessions(m.sessions, m.filterQuery)
 }
 
+// selected returns the session under the cursor, if any.
+func (m Model) selected() (session.Session, bool) {
+	sessions := m.filteredSessions()
+	if m.cursor < 0 || m.cursor >= len(sessions) {
+		return session.Session{}, false
+	}
+	return sessions[m.cursor], true
+}
+
+// clampCursor keeps the cursor and scroll offset inside the filtered list.
+// Call it whenever the session list or the filter changes.
+func (m *Model) clampCursor() {
+	n := len(m.filteredSessions())
+	if m.cursor >= n {
+		m.cursor = n - 1
+	}
+	if m.cursor < 0 {
+		m.cursor = 0
+	}
+	if maxOffset := n - m.visibleSessionRows(); m.scrollOffset > maxOffset {
+		m.scrollOffset = maxOffset
+	}
+	if m.scrollOffset > m.cursor {
+		m.scrollOffset = m.cursor
+	}
+	if m.scrollOffset < 0 {
+		m.scrollOffset = 0
+	}
+}
+
+// confirmKill opens the kill prompt for one session. The name is stored now,
+// so a list refresh before the answer cannot change which session is killed.
+func (m *Model) confirmKill(s session.Session) {
+	if !s.Managed {
+		m.err = errors.New("terminal sessions cannot be killed from dashboard")
+		return
+	}
+	m.killTargets = []string{s.Name}
+	m.confirmMsg = fmt.Sprintf("Kill session '%s'? (y/n)", s.Name)
+}
+
+// openLogs switches to the log view: pane capture for tmux sessions,
+// conversation history for terminal sessions.
+func (m *Model) openLogs(s session.Session) tea.Cmd {
+	m.view = ViewLogs
+	m.logView = ui.NewLogView(s.Name, m.width, m.height)
+	if s.Managed {
+		return m.fetchLogs(s.Name)
+	}
+	return m.fetchConversation(s.Path)
+}
+
 // visibleSessionRows returns how many session rows fit in the content area.
 // Subtracts: title(1) + error(1) + header(1) + status(1) + help(1) + padding(1) = 6
 func (m Model) visibleSessionRows() int {
@@ -570,44 +571,20 @@ func (m Model) refreshSessions() tea.Msg {
 	return SessionsMsg{Sessions: sessions, Err: err}
 }
 
-func (m Model) attachSession(name string) tea.Cmd {
+func (m Model) killSessions(names []string) tea.Cmd {
 	return func() tea.Msg {
-		return AttachMsg{Name: name}
-	}
-}
-
-func (m Model) killSession(name string) tea.Cmd {
-	return func() tea.Msg {
-		err := m.manager.Kill(context.Background(), name)
-		return KillMsg{Err: err}
-	}
-}
-
-func (m Model) killIdleSessions() tea.Cmd {
-	return func() tea.Msg {
-		idleSessions := m.getIdleSessions()
 		ctx := context.Background()
-		var errors []string
-		for _, s := range idleSessions {
-			if err := m.manager.Kill(ctx, s.Name); err != nil {
-				errors = append(errors, fmt.Sprintf("%s: %v", s.Name, err))
+		var failed []string
+		for _, name := range names {
+			if err := m.manager.Kill(ctx, name); err != nil {
+				failed = append(failed, err.Error())
 			}
 		}
-		if len(errors) > 0 {
-			return KillMsg{Err: fmt.Errorf("failed to kill some sessions: %s", strings.Join(errors, "; "))}
+		if len(failed) > 0 {
+			return KillMsg{Err: errors.New(strings.Join(failed, "; "))}
 		}
-		return KillMsg{Err: nil}
+		return KillMsg{}
 	}
-}
-
-func (m Model) getIdleSessions() []session.Session {
-	var idle []session.Session
-	for _, s := range m.sessions {
-		if s.Status == session.StatusIdle && s.Managed {
-			idle = append(idle, s)
-		}
-	}
-	return idle
 }
 
 func (m Model) createSession(name, dir string) tea.Cmd {
@@ -693,48 +670,36 @@ func Run() error {
 			return nil // Normal quit
 		}
 
-		// Bubble Tea has fully exited alt screen.
-		// Drain stdin to consume any DA1 response (?6c) from the terminal.
-		DrainStdin()
-
-		// Enable mouse scroll
+		// Bubble Tea has fully exited alt screen. Enable mouse scroll, attach,
+		// and loop back to the dashboard once the user detaches.
 		name := model.attachTarget
 		_ = exec.Command("tmux", "set-option", "-t", name, "mouse", "on").Run()
-
-		// Background: detect and clean DA1 residue (?6c) from pane
-		go cleanDA1(name)
-
-		// Run tmux attach with TERM=tmux-256color to prevent DA1 query
-		cmd := exec.Command("tmux", "attach-session", "-t", name)
-		cmd.Env = append(os.Environ(), "TERM=tmux-256color")
-		cmd.Stdin = os.Stdin
-		cmd.Stdout = os.Stdout
-		cmd.Stderr = os.Stderr
-		_ = cmd.Run()
-
-		// User detached, loop back to dashboard
+		_ = attach(name)
 	}
 }
 
+// attach hands the terminal to tmux until the user detaches.
+func attach(name string) error {
+	// Drain stdin right before attach to consume any pending DA1 response.
+	DrainStdin()
+	// Background: detect and clean DA1 residue (?6c) from pane
+	go cleanDA1(name)
+	// TERM=tmux-256color prevents the DA1 query.
+	cmd := exec.Command("tmux", "attach-session", "-t", name)
+	cmd.Env = append(os.Environ(), "TERM=tmux-256color")
+	cmd.Stdin = os.Stdin
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	return cmd.Run()
+}
 
-
-// ExecAttach attaches to a tmux session (used by CLI `new` command).
+// ExecAttach attaches to a tmux session (used by the CLI attach and new
+// commands). Unlike the dashboard it leaves the session's mouse mode alone.
 func ExecAttach(name string) error {
 	if !validSessionName.MatchString(name) {
 		return fmt.Errorf("invalid session name: %s", name)
 	}
-	// Mouse mode is controlled globally via Ctrl+B m toggle
-	// Don't override user's preference here
-	// Drain stdin right before attach to consume any pending DA1 response
-	DrainStdin()
-	// Background: detect and clean DA1 residue (?6c) from pane
-	go cleanDA1(name)
-	proc := exec.Command("tmux", "attach-session", "-t", name)
-	proc.Env = append(os.Environ(), "TERM=tmux-256color")
-	proc.Stdin = os.Stdin
-	proc.Stdout = os.Stdout
-	proc.Stderr = os.Stderr
-	return proc.Run()
+	return attach(name)
 }
 
 // CreateSession creates a new Claude session from CLI (non-TUI).
