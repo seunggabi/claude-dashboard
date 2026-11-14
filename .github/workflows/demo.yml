@@ -1,0 +1,49 @@
+name: Demo
+
+# Records demo/demo.gif with VHS and uploads it as an artifact.
+# Download the artifact and commit demo/demo.gif to update the README demo.
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - demo/demo.tape
+      - demo/setup.sh
+      - demo/stub/**
+      - .github/workflows/demo.yml
+
+permissions:
+  contents: read
+
+jobs:
+  record:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Install tmux
+        run: sudo apt-get update && sudo apt-get install -y tmux
+
+      - name: Build
+        run: make build
+
+      - name: Record
+        uses: charmbracelet/vhs-action@v2
+        with:
+          path: demo/demo.tape
+
+      - name: Upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: demo
+          path: |
+            demo/demo.gif
+            demo/shots/
