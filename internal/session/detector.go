@@ -197,8 +197,9 @@ func (d *Detector) detectStatus(ctx context.Context, name string, lastActivity t
 		return StatusIdle
 	}
 
-	// Check the last 20 lines for a question or confirmation prompt.
-	lines := strings.Split(content, "\n")
+	// Check the last 20 lines for a question or confirmation prompt. The capture
+	// is padded with blank lines up to the pane height; drop those first.
+	lines := strings.Split(strings.TrimRight(content, " \t\n"), "\n")
 	for i := len(lines) - 1; i >= 0 && i >= len(lines)-20; i-- {
 		line := strings.TrimSpace(lines[i])
 		if strings.HasSuffix(line, "?") ||

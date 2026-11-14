@@ -20,7 +20,8 @@ func StatusBar(width int, sessionCount int, view string, filter string) string {
 	right := styles.StatusKey.Render("View: ") +
 		styles.StatusVal.Render(view)
 
-	gap := width - lipgloss.Width(left) - lipgloss.Width(right)
+	// styles.StatusBar pads one column on each side, inside the given width.
+	gap := width - 2 - lipgloss.Width(left) - lipgloss.Width(right)
 	if gap < 0 {
 		gap = 0
 	}
