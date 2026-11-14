@@ -80,25 +80,3 @@ func Load() *Config {
 
 	return cfg
 }
-
-// Save writes the configuration to file.
-func Save(cfg *Config) error {
-	dir := ConfigDir()
-	if err := os.MkdirAll(dir, 0755); err != nil {
-		return err
-	}
-
-	cf := configFile{
-		RefreshInterval: cfg.RefreshInterval.String(),
-		SessionPrefix:   cfg.SessionPrefix,
-		DefaultDir:      cfg.DefaultDir,
-		LogHistory:      cfg.LogHistory,
-	}
-
-	data, err := yaml.Marshal(&cf)
-	if err != nil {
-		return err
-	}
-
-	return os.WriteFile(ConfigPath(), data, 0644)
-}

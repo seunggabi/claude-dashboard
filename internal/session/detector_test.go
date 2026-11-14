@@ -2,6 +2,8 @@ package session
 
 import (
 	"testing"
+
+	"github.com/seunggabi/claude-dashboard/internal/monitor"
 )
 
 // ---------------------------------------------------------------------------
@@ -96,5 +98,47 @@ func TestExtractProject_tableTestCases(t *testing.T) {
 				t.Errorf("extractProject(%q, %q): expected %q, got %q", tc.sesName, tc.path, tc.expected, got)
 			}
 		})
+	}
+}
+
+func TestHasAncestorIn(t *testing.T) {
+	table := monitor.ProcessTable{
+		"10": {PID: "10", PPID: "1"},
+		"20": {PID: "20", PPID: "10"},
+		"30": {PID: "30", PPID: "20"},
+		"40": {PID: "40", PPID: "1"},
+		// PPID cycle must not loop forever
+		"50": {PID: "50", PPID: "51"},
+		"51": {PID: "51", PPID: "50"},
+	}
+	set := map[string]bool{"10": true}
+
+	for pid, want := range map[string]bool{"10": true, "30": true, "40": false, "50": false, "": false} {
+		if got := hasAncestorIn(pid, table, set); got != want {
+			t.Errorf("hasAncestorIn(%q) = %v, want %v", pid, got, want)
+		}
+	}
+}
+
+func TestTerminalSessions_skipsTmuxPanesAndDetachedProcesses(t *testing.T) {
+	table := monitor.ProcessTable{
+		"10": {PID: "10", PPID: "1", TTY: "pts/1", Args: "-zsh"},                    // tmux pane shell
+		"11": {PID: "11", PPID: "10", TTY: "pts/1", Args: "claude --model opus"},    // claude under the pane
+		"20": {PID: "20", PPID: "1", TTY: "pts/3", Args: "/usr/local/bin/claude -c"}, // claude in a terminal
+		"21": {PID: "21", PPID: "1", TTY: "pts/2", Args: "claude"},                  // another terminal
+		"30": {PID: "30", PPID: "1", TTY: "?", Args: "claude"},                      // no TTY
+		"40": {PID: "40", PPID: "1", TTY: "pts/4", Args: "vim claude"},              // not claude
+	}
+
+	got := terminalSessions(table, map[string]bool{"10": true})
+
+	if len(got) != 2 {
+		t.Fatalf("expected 2 terminal sessions, got %d: %+v", len(got), got)
+	}
+	if got[0].Name != "terminal/pts/2" || got[0].PID != "21" || got[1].Name != "terminal/pts/3" || got[1].PID != "20" {
+		t.Errorf("unexpected sessions or order: %+v", got)
+	}
+	if got[0].Managed || got[0].Status != StatusTerminal {
+		t.Errorf("terminal session should be unmanaged with terminal status: %+v", got[0])
 	}
 }

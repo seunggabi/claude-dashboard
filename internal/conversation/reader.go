@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -33,13 +34,17 @@ func ReadConversation(workDir string, maxMessages int) ([]Message, error) {
 	return parseJSONL(jsonlFile, maxMessages)
 }
 
+// nonAlphanumeric matches the characters Claude Code replaces with "-" when
+// deriving a project directory name from a working directory.
+var nonAlphanumeric = regexp.MustCompile(`[^a-zA-Z0-9]`)
+
 // mapToProjectDir converts a working directory to the Claude project directory path.
 func mapToProjectDir(workDir string) string {
 	if workDir == "" {
 		return ""
 	}
-	// /Users/foo/bar -> -Users-foo-bar
-	projectName := strings.ReplaceAll(workDir, "/", "-")
+	// /Users/foo/my.app -> -Users-foo-my-app
+	projectName := nonAlphanumeric.ReplaceAllString(workDir, "-")
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
 		return ""

@@ -2,8 +2,9 @@ package session
 
 import (
 	"context"
-	"fmt"
 	"os/exec"
+	"path"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -34,134 +35,121 @@ func NewDetector(client *tmux.Client) *Detector {
 	return &Detector{client: client}
 }
 
-// Detect finds all Claude-related tmux sessions.
+// Detect finds all Claude sessions: tmux sessions first, then Claude processes
+// running in plain terminals.
 func (d *Detector) Detect(ctx context.Context) ([]Session, error) {
-	output, err := d.client.ListSessions(ctx, tmux.SessionFormat)
-	if err != nil {
-		// Even if tmux fails, still detect terminal sessions
-		return d.detectTerminalOnly()
-	}
-	if output == "" {
-		return d.detectTerminalOnly()
-	}
-
-	rawSessions := tmux.ParseSessions(output)
-	sessions := make([]Session, 0, len(rawSessions))
-
-	// Build process table and children map once for all sessions.
+	// One process table per refresh, shared by every step below.
 	procTable := monitor.GetProcessTable()
-	procChildren := buildProcChildren(procTable)
-
-	for _, raw := range rawSessions {
-		// Include sessions with cd- prefix or that contain claude in the name
-		isNameMatch := strings.HasPrefix(raw.Name, SessionPrefix) || strings.Contains(strings.ToLower(raw.Name), "claude")
-		if !isNameMatch && !d.client.HasClaudeProcess(ctx, raw.Name, procChildren) {
-			continue
-		}
-
-		s := Session{
-			Name:      raw.Name,
-			Project:   extractProject(raw.Name, raw.Path),
-			Status:    StatusUnknown,
-			StartedAt: raw.Created,
-			Activity:  raw.Activity,
-			Attached:  raw.Attached,
-			Path:      raw.Path,
-			Managed:   true,
-		}
-
-		// Detect status from pane content and activity timestamp
-		s.Status = d.detectStatus(ctx, raw.Name, raw.Activity)
-
-		// Get PID
-		pid, err := d.client.GetSessionPID(ctx, raw.Name)
-		if err == nil {
-			s.PID = pid
-		}
-
-		sessions = append(sessions, s)
-	}
-
-	// Collect tmux session PIDs for deduplication
-	tmuxPIDs := make(map[string]bool)
-	for _, s := range sessions {
-		if s.PID != "" {
-			tmuxPIDs[s.PID] = true
-		}
-	}
-
-	// Detect terminal sessions (Claude running outside tmux)
-	terminalSessions := d.DetectTerminalSessions(tmuxPIDs)
-	sessions = append(sessions, terminalSessions...)
-
-	return sessions, nil
-}
-
-// detectTerminalOnly returns only terminal sessions (when tmux is unavailable).
-func (d *Detector) detectTerminalOnly() ([]Session, error) {
-	sessions := d.DetectTerminalSessions(make(map[string]bool))
-	return sessions, nil
-}
-
-// DetectTerminalSessions finds Claude processes running outside tmux.
-func (d *Detector) DetectTerminalSessions(tmuxPIDs map[string]bool) []Session {
-	cmd := exec.Command("ps", "-eo", "pid,ppid,tty,args")
-	out, err := cmd.Output()
-	if err != nil {
-		return nil
-	}
 
 	var sessions []Session
-	lines := strings.Split(string(out), "\n")
-	for _, line := range lines[1:] { // skip header
-		fields := strings.Fields(line)
-		if len(fields) < 4 {
-			continue
-		}
-		pid := fields[0]
-		tty := fields[2]
 
+	// A tmux failure (e.g. no server running) still leaves terminal sessions to report.
+	if output, err := d.client.ListSessions(ctx, tmux.SessionFormat); err == nil && output != "" {
+		procChildren := buildProcChildren(procTable)
+
+		for _, raw := range tmux.ParseSessions(output) {
+			// Include sessions with the managed prefix or that contain claude in the name
+			isNameMatch := strings.HasPrefix(raw.Name, SessionPrefix) || strings.Contains(strings.ToLower(raw.Name), "claude")
+			if !isNameMatch && !d.client.HasClaudeProcess(ctx, raw.Name, procChildren) {
+				continue
+			}
+
+			s := Session{
+				Name:      raw.Name,
+				Project:   extractProject(raw.Name, raw.Path),
+				Status:    d.detectStatus(ctx, raw.Name, raw.Activity),
+				StartedAt: raw.Created,
+				Activity:  raw.Activity,
+				Attached:  raw.Attached,
+				Path:      raw.Path,
+				Managed:   true,
+			}
+			if pid, err := d.client.GetSessionPID(ctx, raw.Name); err == nil {
+				s.PID = pid
+			}
+			sessions = append(sessions, s)
+		}
+	}
+
+	// Pane PIDs of the tmux sessions above, so their processes are not listed twice.
+	panePIDs := make(map[string]bool)
+	for _, s := range sessions {
+		if s.PID != "" {
+			panePIDs[s.PID] = true
+		}
+	}
+	sessions = append(sessions, terminalSessions(procTable, panePIDs)...)
+
+	for i := range sessions {
+		if sessions[i].PID != "" {
+			info := monitor.GetChildProcessInfo(sessions[i].PID, procTable)
+			sessions[i].CPU = info.CPU
+			sessions[i].Memory = info.Memory
+		}
+	}
+
+	return sessions, nil
+}
+
+// terminalSessions finds Claude processes running outside the tmux sessions
+// identified by panePIDs.
+func terminalSessions(table monitor.ProcessTable, panePIDs map[string]bool) []Session {
+	var sessions []Session
+	for _, p := range table {
 		// Only match processes where the executable base name is "claude"
-		execName := fields[3]
-		parts := strings.Split(execName, "/")
-		baseName := parts[len(parts)-1]
-		if baseName != "claude" {
-			continue
-		}
-
-		// Skip if already tracked as tmux session
-		if tmuxPIDs[pid] {
+		exe, _, _ := strings.Cut(p.Args, " ")
+		if path.Base(exe) != "claude" {
 			continue
 		}
 
 		// Skip background/detached processes (no TTY)
-		if tty == "??" || tty == "?" {
+		if p.TTY == "??" || p.TTY == "?" {
+			continue
+		}
+
+		// Skip Claude running in a tracked tmux pane, directly or under its shell
+		if hasAncestorIn(p.PID, table, panePIDs) {
 			continue
 		}
 
 		// Get working directory via lsof
-		path := getProcessCWD(pid)
-
+		cwd := getProcessCWD(p.PID)
 		project := ""
-		if path != "" {
-			pathParts := strings.Split(strings.TrimRight(path, "/"), "/")
-			if len(pathParts) > 0 {
-				project = pathParts[len(pathParts)-1]
-			}
+		if cwd != "" {
+			project = path.Base(cwd)
 		}
 
-		s := Session{
-			Name:    fmt.Sprintf("terminal/%s", tty),
+		sessions = append(sessions, Session{
+			Name:    "terminal/" + p.TTY,
 			Project: project,
 			Status:  StatusTerminal,
-			PID:     pid,
-			Path:    path,
+			PID:     p.PID,
+			Path:    cwd,
 			Managed: false,
-		}
-		sessions = append(sessions, s)
+		})
 	}
 
+	// The process table is a map; sort so rows keep their place between refreshes.
+	sort.Slice(sessions, func(i, j int) bool {
+		if sessions[i].Name != sessions[j].Name {
+			return sessions[i].Name < sessions[j].Name
+		}
+		return sessions[i].PID < sessions[j].PID
+	})
+
 	return sessions
+}
+
+// hasAncestorIn reports whether pid, or any of its ancestors, is in set.
+func hasAncestorIn(pid string, table monitor.ProcessTable, set map[string]bool) bool {
+	// The depth cap guards against a PPID cycle in a malformed table.
+	for depth := 0; pid != "" && depth < 64; depth++ {
+		if set[pid] {
+			return true
+		}
+		pid = table[pid].PPID
+	}
+	return false
 }
 
 // getProcessCWD gets the current working directory of a process.
@@ -193,7 +181,8 @@ func getProcessCWD(pid string) string {
 	return result
 }
 
-// detectStatus determines session status by examining activity timestamp and pane content.
+// detectStatus determines session status by examining activity timestamp and pane content:
+// recent output is active, a visible question is waiting, anything else is idle.
 func (d *Detector) detectStatus(ctx context.Context, name string, lastActivity time.Time) Status {
 	// If activity is very recent (within 2 seconds), consider it active
 	// This handles cases where output is streaming but prompt is not visible yet
@@ -208,39 +197,19 @@ func (d *Detector) detectStatus(ctx context.Context, name string, lastActivity t
 		return StatusIdle
 	}
 
-	lines := strings.Split(content, "\n")
-	hasPrompt := false
-
-	// Check last 20 lines for status indicators
+	// Check the last 20 lines for a question or confirmation prompt. The capture
+	// is padded with blank lines up to the pane height; drop those first.
+	lines := strings.Split(strings.TrimRight(content, " \t\n"), "\n")
 	for i := len(lines) - 1; i >= 0 && i >= len(lines)-20; i-- {
 		line := strings.TrimSpace(lines[i])
-		if line == "" {
-			continue
-		}
-
-		// Waiting for input (confirmation prompts)
-		// Match "?" only at end of line, or known confirmation patterns.
-		endsWithQuestion := strings.HasSuffix(line, "?")
-		hasConfirmPattern := strings.Contains(line, "(y/n)") || strings.Contains(line, "(Y/n)") ||
-			strings.Contains(line, "(y/N)") || strings.Contains(line, "Y/n") || strings.Contains(line, "y/N")
-		if endsWithQuestion || hasConfirmPattern {
+		if strings.HasSuffix(line, "?") ||
+			strings.Contains(line, "Y/n") || strings.Contains(line, "y/N") ||
+			strings.Contains(line, "(y/n)") {
 			return StatusWaiting
 		}
-
-		// Prompt visible = idle
-		// Match "$" only at end of line to avoid false positives on shell variables.
-		endsWithDollar := strings.HasSuffix(line, "$")
-		if strings.HasPrefix(line, ">") || strings.Contains(line, "❯") || endsWithDollar {
-			hasPrompt = true
-		}
 	}
 
-	// If prompt found, it's idle. Otherwise, unknown.
-	if hasPrompt {
-		return StatusIdle
-	}
-
-	return StatusIdle // Default to idle when no recent activity
+	return StatusIdle
 }
 
 // buildProcChildren converts a monitor.ProcessTable into the children map

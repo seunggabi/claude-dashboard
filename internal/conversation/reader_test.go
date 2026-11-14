@@ -459,3 +459,11 @@ func TestReadConversation_nonexistentProjectDirReturnsError(t *testing.T) {
 		t.Error("expected error for nonexistent project dir, got nil")
 	}
 }
+
+func TestMapToProjectDir_replacesAllNonAlphanumericCharacters(t *testing.T) {
+	got := mapToProjectDir("/Users/me/.config/my_app v1.2")
+	want := "-Users-me--config-my-app-v1-2"
+	if filepath.Base(got) != want {
+		t.Errorf("expected project dir name %q, got %q", want, filepath.Base(got))
+	}
+}

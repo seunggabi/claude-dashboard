@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+# Stand-in for the claude CLI, used only to record demo/demo.gif.
+# The argument picks what the fake session looks like: working | waiting | idle.
+
+case "${1:-idle}" in
+working)
+    echo "> add retry logic to the payment client"
+    echo
+    i=0
+    while true; do
+        i=$((i + 1))
+        echo "● Edit(internal/payment/client.go)  step $i"
+        sleep 1
+    done
+    ;;
+waiting)
+    printf '> run the database migration\n\n● Bash(make migrate)\n\nDo you want to proceed? (y/n)\n'
+    cat >/dev/null
+    ;;
+*)
+    printf 'claude (demo stub)\n\n> '
+    cat >/dev/null
+    ;;
+esac

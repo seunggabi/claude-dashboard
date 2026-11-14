@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/bubbles/textinput"
+	"github.com/seunggabi/claude-dashboard/internal/session"
 	"github.com/seunggabi/claude-dashboard/internal/styles"
 )
 
@@ -107,7 +108,7 @@ func RenderCreateForm(form CreateForm, width int) string {
 	b.WriteString("\n")
 	b.WriteString(styles.Help.Render("  Session will run: claude in the specified directory"))
 	b.WriteString("\n")
-	b.WriteString(styles.Help.Render(fmt.Sprintf("  tmux session name: cd-%s", form.NameInput.Value())))
+	b.WriteString(styles.Help.Render(fmt.Sprintf("  tmux session name: %s%s", session.SessionPrefix, form.NameInput.Value())))
 	b.WriteString("\n")
 
 	return b.String()

@@ -17,7 +17,9 @@ type RawSession struct {
 }
 
 // SessionFormat is the tmux format string for listing sessions.
-const SessionFormat = "#{session_name}|#{session_created}|#{session_attached}|#{session_windows}|#{session_activity}|#{session_path}"
+// The activity field is window_activity: it follows pane output, whereas
+// session_activity only follows client input and stays still while detached.
+const SessionFormat = "#{session_name}|#{session_created}|#{session_attached}|#{session_windows}|#{window_activity}|#{session_path}"
 
 // ParseSessions parses tmux list-sessions output.
 func ParseSessions(output string) []RawSession {

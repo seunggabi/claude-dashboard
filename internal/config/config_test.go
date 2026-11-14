@@ -184,39 +184,3 @@ func TestConfigPath_endsWithConfigYAML(t *testing.T) {
 		t.Errorf("expected file name to be 'config.yaml', got %q", filepath.Base(path))
 	}
 }
-
-// ---------------------------------------------------------------------------
-// Save + Load round-trip
-// ---------------------------------------------------------------------------
-
-func TestSave_writesConfigThatCanBeLoadedBack(t *testing.T) {
-	// Ensure no real config interferes.
-	realPath := ConfigPath()
-	if _, err := os.Stat(realPath); err == nil {
-		t.Skip("real config file exists; skipping save round-trip test")
-	}
-	defer func() { _ = os.Remove(realPath) }()
-
-	original := &Config{
-		RefreshInterval: 3 * time.Second,
-		SessionPrefix:   "test-",
-		DefaultDir:      "/tmp",
-		LogHistory:      250,
-	}
-	if err := Save(original); err != nil {
-		t.Fatalf("Save() failed: %v", err)
-	}
-	loaded := Load()
-	if loaded.RefreshInterval != original.RefreshInterval {
-		t.Errorf("RefreshInterval: expected %v, got %v", original.RefreshInterval, loaded.RefreshInterval)
-	}
-	if loaded.SessionPrefix != original.SessionPrefix {
-		t.Errorf("SessionPrefix: expected %q, got %q", original.SessionPrefix, loaded.SessionPrefix)
-	}
-	if loaded.DefaultDir != original.DefaultDir {
-		t.Errorf("DefaultDir: expected %q, got %q", original.DefaultDir, loaded.DefaultDir)
-	}
-	if loaded.LogHistory != original.LogHistory {
-		t.Errorf("LogHistory: expected %d, got %d", original.LogHistory, loaded.LogHistory)
-	}
-}

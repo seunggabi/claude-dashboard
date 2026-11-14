@@ -78,6 +78,14 @@ func (c *Client) NewSession(ctx context.Context, name, startDir, command string)
 	return cmd.Run()
 }
 
+// HasSession reports whether a session with exactly this name exists.
+func (c *Client) HasSession(ctx context.Context, name string) bool {
+	ctx, cancel := withTimeout(ctx)
+	defer cancel()
+	// "=" forces an exact match; a bare name also matches by prefix.
+	return exec.CommandContext(ctx, c.tmuxPath, "has-session", "-t", "="+name).Run() == nil
+}
+
 // KillSession kills a tmux session by name.
 func (c *Client) KillSession(ctx context.Context, name string) error {
 	if err := validateSessionName(name); err != nil {
@@ -121,29 +129,6 @@ func (c *Client) GetSessionPID(ctx context.Context, name string) (string, error)
 	return "", fmt.Errorf("no pane found for session %s", name)
 }
 
-// SendKeys sends keys to a tmux session.
-func (c *Client) SendKeys(ctx context.Context, name, keys string) error {
-	if err := validateSessionName(name); err != nil {
-		return err
-	}
-	ctx, cancel := withTimeout(ctx)
-	defer cancel()
-	cmd := exec.CommandContext(ctx, c.tmuxPath, "send-keys", "-t", name, keys, "Enter")
-	return cmd.Run()
-}
-
-// GetSessionInfo returns detailed session info with custom format.
-func (c *Client) GetSessionInfo(ctx context.Context, name, format string) (string, error) {
-	ctx, cancel := withTimeout(ctx)
-	defer cancel()
-	cmd := exec.CommandContext(ctx, c.tmuxPath, "display-message", "-t", name, "-p", format)
-	out, err := cmd.Output()
-	if err != nil {
-		return "", err
-	}
-	return strings.TrimSpace(string(out)), nil
-}
-
 // ProcEntry holds a child process PID and its command args.
 type ProcEntry struct {
 	PID  string
@@ -151,8 +136,7 @@ type ProcEntry struct {
 }
 
 // HasClaudeProcess checks if a session has a claude process in its process tree.
-// procChildren maps each PID to its children ProcEntry values; pass nil to fall
-// back to spawning ps (legacy path, used when no cached table is available).
+// procChildren maps each PID to its children ProcEntry values.
 func (c *Client) HasClaudeProcess(ctx context.Context, name string, procChildren map[string][]ProcEntry) bool {
 	// Check pane current command first (fast path).
 	tctx, cancel := withTimeout(ctx)
@@ -189,28 +173,8 @@ func BuildProcChildren(entries []struct{ PID, PPID, Args string }) map[string][]
 }
 
 // hasClaudeDescendant checks if any descendant process of the given PID has
-// "claude" in its command. If procChildren is nil it falls back to spawning ps.
+// "claude" in its command.
 func hasClaudeDescendant(rootPID string, procChildren map[string][]ProcEntry) bool {
-	if procChildren == nil {
-		// Legacy fallback: spawn ps once.
-		cmd := exec.Command("ps", "-eo", "pid,ppid,args")
-		out, err := cmd.Output()
-		if err != nil {
-			return false
-		}
-		procChildren = make(map[string][]ProcEntry)
-		lines := strings.Split(string(out), "\n")
-		for _, line := range lines[1:] { // skip header
-			fields := strings.Fields(line)
-			if len(fields) < 3 {
-				continue
-			}
-			ppid := fields[1]
-			args := strings.Join(fields[2:], " ")
-			procChildren[ppid] = append(procChildren[ppid], ProcEntry{PID: fields[0], Args: args})
-		}
-	}
-
 	// BFS from rootPID
 	queue := []string{rootPID}
 	visited := make(map[string]bool)

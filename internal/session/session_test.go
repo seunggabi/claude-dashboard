@@ -134,3 +134,10 @@ func TestSessionPrefix_value(t *testing.T) {
 		t.Errorf("expected SessionPrefix to be %q, got %q", "cd-", SessionPrefix)
 	}
 }
+
+func TestUptime_unknownStartTimeShowsDash(t *testing.T) {
+	s := &Session{}
+	if got := s.Uptime(); got != "-" {
+		t.Errorf("expected %q for zero start time, got %q", "-", got)
+	}
+}
