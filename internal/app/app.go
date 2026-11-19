@@ -680,6 +680,13 @@ func Run() error {
 
 // attach hands the terminal to tmux until the user detaches.
 func attach(name string) error {
+	// Show the session name in its dashboard color. Session options only, so
+	// the global tmux config and other sessions are left alone.
+	left := fmt.Sprintf("#[bg=colour%s,fg=black,bold] #S #[default] ", styles.SessionColor(name))
+	_ = exec.Command("tmux",
+		"set-option", "-t", name, "status-left", left, ";",
+		"set-option", "-t", name, "status-left-length", "40").Run()
+
 	// Drain stdin right before attach to consume any pending DA1 response.
 	DrainStdin()
 	// Background: detect and clean DA1 residue (?6c) from pane

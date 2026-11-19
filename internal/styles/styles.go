@@ -1,6 +1,22 @@
 package styles
 
-import "github.com/charmbracelet/lipgloss"
+import (
+	"hash/fnv"
+
+	"github.com/charmbracelet/lipgloss"
+)
+
+// sessionPalette holds ANSI 256 colors that stay readable on dark and light
+// terminals. tmux understands the same numbers as colourN.
+var sessionPalette = []string{"39", "77", "141", "170", "178", "203", "208", "44"}
+
+// SessionColor returns the ANSI 256 color number for a session name.
+// The same name always gets the same color.
+func SessionColor(name string) string {
+	h := fnv.New32a()
+	h.Write([]byte(name))
+	return sessionPalette[h.Sum32()%uint32(len(sessionPalette))]
+}
 
 // Colors
 var (
