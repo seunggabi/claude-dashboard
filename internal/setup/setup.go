@@ -121,9 +121,9 @@ bind-key -n C-s run-shell "~/.local/bin/claude-dashboard-save-history"
 # claude-dashboard: Ctrl+B g opens the dashboard in a popup (tmux 3.2+)
 bind-key g display-popup -E -w 90% -h 80% claude-dashboard
 
-# claude-dashboard: Status bar with version check and mouse status
-set -g status-right-length 80
-set -g status-right "#(~/.local/bin/claude-dashboard-status-bar) | [F12] #[fg=#{?mouse,green,red}]Mouse:#{?mouse,ON,OFF}#[default] | %H:%M"
+# claude-dashboard: Status bar with session counts, version check and mouse status
+set -g status-right-length 120
+set -g status-right "#(claude-dashboard status)#(~/.local/bin/claude-dashboard-status-bar) | [F12] #[fg=#{?mouse,green,red}]Mouse:#{?mouse,ON,OFF}#[default] | %H:%M"
 set -g status-interval 5
 
 # claude-dashboard: Enable mouse mode by default

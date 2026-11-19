@@ -30,7 +30,8 @@ func main() {
 	// Auto-setup on first run (before any command)
 	// Skip for --version, --help, and setup commands
 	skipAutoSetup := len(os.Args) > 1 && (os.Args[1] == "--version" || os.Args[1] == "-v" ||
-		os.Args[1] == "--help" || os.Args[1] == "-h" || os.Args[1] == "setup")
+		os.Args[1] == "--help" || os.Args[1] == "-h" || os.Args[1] == "setup" ||
+		os.Args[1] == "status") // status output goes to the tmux status bar
 	if !skipAutoSetup {
 		runAutoSetup()
 	}
@@ -48,6 +49,9 @@ func main() {
 				fmt.Fprintf(os.Stderr, "Setup failed: %v\n", err)
 				os.Exit(1)
 			}
+			os.Exit(0)
+		case "status":
+			fmt.Print(app.StatusSummary())
 			os.Exit(0)
 		case "attach":
 			if len(os.Args) < 3 {
@@ -162,6 +166,7 @@ Usage:
   claude-dashboard setup                               Install helper scripts and configure tmux
   claude-dashboard new [NAME] [options]                Create a new session (name defaults to path)
   claude-dashboard attach NAME                         Attach to a session directly
+  claude-dashboard status                              Print waiting/active counts for the tmux status bar
   claude-dashboard --version                           Show version
   claude-dashboard --help                              Show this help
 
