@@ -66,3 +66,19 @@ func TestCursorIsClampedToFilteredList(t *testing.T) {
 		t.Fatalf("empty list should select nothing with cursor 0, got cursor=%d", m.cursor)
 	}
 }
+
+func TestFormatStatusSummary(t *testing.T) {
+	s := func(st session.Status) session.Session { return session.Session{Status: st} }
+
+	if got := formatStatusSummary([]session.Session{s(session.StatusIdle), s(session.StatusTerminal)}); got != "" {
+		t.Errorf("nothing to report: got %q, want empty", got)
+	}
+
+	got := formatStatusSummary([]session.Session{
+		s(session.StatusWaiting), s(session.StatusActive), s(session.StatusActive), s(session.StatusIdle),
+	})
+	want := "#[fg=black,bg=yellow,bold] ◎ 1 waiting #[default] ● 2 active | "
+	if got != want {
+		t.Errorf("got %q, want %q", got, want)
+	}
+}

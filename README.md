@@ -60,7 +60,7 @@ claude-dashboard   # Launch the TUI dashboard
 The first run performs a one-time setup. You can repeat it at any time with `claude-dashboard setup`. Setup:
 
 - installs three helper scripts to `~/.local/bin/`
-- appends a `claude-dashboard` block to `~/.tmux.conf`: `F12` mouse toggle, `Ctrl+S` history save, a status bar with version info, mouse mode on, and a 50,000-line scrollback
+- appends a `claude-dashboard` block to `~/.tmux.conf`: `F12` mouse toggle, `Ctrl+S` history save, a status bar with waiting/active session counts and version info, mouse mode on, and a 50,000-line scrollback
 
 ### 💡 Pro Tip: Super Fast Session Creation
 
@@ -240,6 +240,7 @@ log_history: 1000          # Number of pane lines shown in the log viewer
 claude-dashboard                       # Launch TUI dashboard
 claude-dashboard new [name]            # Create session (auto-name if omitted)
 claude-dashboard attach <session>      # Attach directly (skip TUI)
+claude-dashboard status                # Waiting/active counts, used by the tmux status bar
 claude-dashboard setup                 # Install helper scripts & configure tmux
 claude-dashboard --version             # Show version
 claude-dashboard --help                # Show help

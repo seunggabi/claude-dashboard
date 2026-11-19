@@ -729,6 +729,47 @@ func ExecAttach(name string) error {
 	return attach(name)
 }
 
+// StatusSummary returns the waiting and active session counts as tmux status
+// bar text, or "" when there is nothing to report or tmux is unavailable.
+func StatusSummary() string {
+	client, err := tmux.NewClient()
+	if err != nil {
+		return ""
+	}
+	sessions, err := session.NewManager(client).List(context.Background())
+	if err != nil {
+		return ""
+	}
+	return formatStatusSummary(sessions)
+}
+
+// formatStatusSummary renders counts with tmux style codes. Waiting is a badge
+// with its own background so it shows on any status bar color. The trailing
+// separator keeps status-right tidy when the summary is empty.
+func formatStatusSummary(sessions []session.Session) string {
+	var waiting, active int
+	for _, s := range sessions {
+		switch s.Status {
+		case session.StatusWaiting:
+			waiting++
+		case session.StatusActive:
+			active++
+		}
+	}
+
+	var parts []string
+	if waiting > 0 {
+		parts = append(parts, fmt.Sprintf("#[fg=black,bg=yellow,bold] ◎ %d waiting #[default]", waiting))
+	}
+	if active > 0 {
+		parts = append(parts, fmt.Sprintf("● %d active", active))
+	}
+	if len(parts) == 0 {
+		return ""
+	}
+	return strings.Join(parts, " ") + " | "
+}
+
 // CreateSession creates a new Claude session from CLI (non-TUI).
 func CreateSession(name, projectDir, claudeArgs string) error {
 	client, err := tmux.NewClient()
