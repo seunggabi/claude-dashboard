@@ -93,8 +93,13 @@ func RenderDashboard(sessions []session.Session, cursor int, width int, scrollOf
 			nameWidth, pathWidth,
 		)
 
+		// The session's color marker takes the first margin column.
+		marker := lipgloss.NewStyle().Foreground(lipgloss.Color(styles.SessionColor(s.Name))).Render("▌")
+		b.WriteString(marker)
+		row = row[1:]
+
 		if i == cursor {
-			b.WriteString(styles.Selected.Width(width).Render(row))
+			b.WriteString(styles.Selected.Width(width - 1).Render(row))
 		} else {
 			switch s.Status {
 			case session.StatusActive:
