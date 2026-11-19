@@ -169,6 +169,7 @@ These are tmux bindings added by `claude-dashboard setup`, plus the tmux default
 | Key        | Action                                                    |
 |------------|-----------------------------------------------------------|
 | `Ctrl+B d` | Detach and return to the dashboard                        |
+| `Ctrl+B g` | Open the dashboard in a popup; `enter` switches to the selected session, `q` closes it (tmux 3.2+) |
 | `Ctrl+S`   | Save the entire pane history to a file in `~/Desktop/`    |
 | `F12`      | Toggle mouse mode (ON: scroll with mouse, OFF: easy text select) |
 | `Ctrl+B [` | Scroll history in copy mode, `q` to exit                  |

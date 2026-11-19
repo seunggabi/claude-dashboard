@@ -118,6 +118,9 @@ bind-key -n F12 run-shell "~/.local/bin/claude-dashboard-mouse-toggle"
 # claude-dashboard: Ctrl+S key binding for saving pane history
 bind-key -n C-s run-shell "~/.local/bin/claude-dashboard-save-history"
 
+# claude-dashboard: Ctrl+B g opens the dashboard in a popup (tmux 3.2+)
+bind-key g display-popup -E -w 90% -h 80% claude-dashboard
+
 # claude-dashboard: Status bar with version check and mouse status
 set -g status-right-length 80
 set -g status-right "#(~/.local/bin/claude-dashboard-status-bar) | [F12] #[fg=#{?mouse,green,red}]Mouse:#{?mouse,ON,OFF}#[default] | %H:%M"
@@ -244,6 +247,7 @@ func Setup(silent bool, version string) error {
 		fmt.Println("  🎉 Setup complete!")
 		fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
 		fmt.Println()
+		fmt.Println("  Press Ctrl+B g in tmux to open the dashboard in a popup")
 		fmt.Println("  Press F12 in tmux to toggle mouse mode")
 		fmt.Println("  Press Ctrl+S in tmux to save entire pane history to file")
 		fmt.Println("  Check the status bar for version and mouse status")

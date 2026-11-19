@@ -675,7 +675,18 @@ func Run() error {
 		name := model.attachTarget
 		_ = exec.Command("tmux", "set-option", "-t", name, "mouse", "on").Run()
 		_ = attach(name)
+
+		// Inside tmux the client has moved to the session; there is no detach to
+		// return from, and exiting closes the popup.
+		if insideTmux() {
+			return nil
+		}
 	}
+}
+
+// insideTmux reports whether claude-dashboard runs inside a tmux client.
+func insideTmux() bool {
+	return os.Getenv("TMUX") != ""
 }
 
 // attach hands the terminal to tmux until the user detaches.
@@ -686,6 +697,15 @@ func attach(name string) error {
 	_ = exec.Command("tmux",
 		"set-option", "-t", name, "status-left", left, ";",
 		"set-option", "-t", name, "status-left-length", "40").Run()
+
+	// Inside tmux (e.g. the Ctrl+B g popup) attach-session would nest, so move
+	// this client to the session instead.
+	// ponytail: switch-client picks tmux's current client; pass -c if several
+	// clients share one session and the wrong one moves.
+	if insideTmux() {
+		return exec.Command("tmux", "switch-client", "-t", name).Run()
+	}
+
 
 	// Drain stdin right before attach to consume any pending DA1 response.
 	DrainStdin()
