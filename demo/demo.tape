@@ -60,6 +60,16 @@ Up Sleep 300ms
 Up Sleep 600ms
 Enter Sleep 4s
 Screenshot demo/shots/7-attached.png
+
+# Popup dashboard from inside the session, then switch to another session
+Ctrl+B Sleep 300ms
+Type "g" Sleep 4s
+Screenshot demo/shots/7a-popup.png
+Down Sleep 600ms
+Down Sleep 600ms
+Enter Sleep 3s
+Screenshot demo/shots/7b-switched.png
+
 Ctrl+B Sleep 300ms
 Type "d" Sleep 3s
 Screenshot demo/shots/8-detached.png
