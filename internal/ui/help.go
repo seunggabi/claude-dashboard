@@ -38,6 +38,7 @@ func RenderHelp(width int) string {
 				{"l", "View session logs"},
 				{"ctrl+s", "Save pane history (when attached to session)"},
 				{"d", "View session detail"},
+				{"o", "Overview: title, last prompt and todos of every session"},
 				{"r", "Refresh session list"},
 			},
 		},

@@ -181,6 +181,7 @@ Keybindings:
   ctrl+k  Kill all idle sessions
   l       View logs
   d       Session detail
+  o       Overview (title, last prompt, todos)
   /       Filter
   r       Refresh
   ?       Help
