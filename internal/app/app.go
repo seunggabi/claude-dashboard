@@ -485,9 +485,7 @@ func (m Model) View() string {
 	case ViewOverview:
 		content := ui.RenderOverview(sessions, m.summaries, m.cursor, m.width, contentHeight)
 		b.WriteString(content)
-		b.WriteString(strings.Repeat("
-", max(0, contentHeight-strings.Count(content, "
-"))))
+		b.WriteString(strings.Repeat("\n", max(0, contentHeight-strings.Count(content, "\n"))))
 	}
 
 	// Confirm overlay
