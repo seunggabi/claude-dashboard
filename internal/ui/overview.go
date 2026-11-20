@@ -56,7 +56,14 @@ func overviewBlock(s session.Session, sum conversation.Summary, selected bool, w
 	} else {
 		name = lipgloss.NewStyle().Bold(true).Render(truncate(s.Name, textWidth-12))
 	}
-	lines := []string{fmt.Sprintf("%s %s  %s", marker, name, s.StatusString())}
+	head := fmt.Sprintf("%s %s  %s", marker, name, s.StatusString())
+	if s.Branch != "" {
+		// Only what fits on the line, so the block never wraps.
+		if room := min(30, width-lipgloss.Width(head)-2); room >= 5 {
+			head += styles.Muted.Render("  " + truncate(s.Branch, room))
+		}
+	}
+	lines := []string{head}
 
 	title := sum.Title
 	if title == "" {
