@@ -138,3 +138,13 @@ func TestParseUnixTimestamp_zeroTimestamp(t *testing.T) {
 		t.Errorf("expected Unix epoch for '0', got %v", ts)
 	}
 }
+
+func TestParseSessions_claudeStateAndPipeInPath(t *testing.T) {
+	sessions := ParseSessions("cd-a|1700000000|0|1|1700000001|waiting:1700000002|/tmp/a|b")
+	if len(sessions) != 1 {
+		t.Fatalf("got %d sessions, want 1", len(sessions))
+	}
+	if s := sessions[0]; s.ClaudeState != "waiting:1700000002" || s.Path != "/tmp/a|b" {
+		t.Errorf("state=%q path=%q", s.ClaudeState, s.Path)
+	}
+}

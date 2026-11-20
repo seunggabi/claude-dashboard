@@ -5,6 +5,7 @@ import (
 	"os/exec"
 	"path"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -224,9 +225,19 @@ func (d *Detector) detectStatus(ctx context.Context, name string, lastActivity t
 // user interrupts it, so "active" can outlive the work.
 const staleActive = 30 * time.Second
 
-// statusFromHook maps the state written by "claude-dashboard hook" to a
-// Status. ok is false when there is no usable state.
-func statusFromHook(state string, lastActivity time.Time) (Status, bool) {
+// staleWaiting is how long after a "waiting" report the pane may keep
+// producing output before the report is distrusted. Answering or cancelling
+// a prompt redraws the pane, and a denied or cancelled prompt fires no hook.
+const staleWaiting = 5 * time.Second
+
+// statusFromHook maps the "STATE:UNIXTIME" value written by
+// "claude-dashboard hook" to a Status. ok is false when there is no usable
+// state.
+func statusFromHook(value string, lastActivity time.Time) (Status, bool) {
+	state, at, _ := strings.Cut(value, ":")
+	ts, _ := strconv.ParseInt(at, 10, 64)
+	reportedAt := time.Unix(ts, 0)
+
 	switch state {
 	case "active":
 		if time.Since(lastActivity) > staleActive {
@@ -234,6 +245,9 @@ func statusFromHook(state string, lastActivity time.Time) (Status, bool) {
 		}
 		return StatusActive, true
 	case "waiting":
+		if lastActivity.After(reportedAt.Add(staleWaiting)) {
+			return "", false
+		}
 		return StatusWaiting, true
 	}
 	// "idle" (Claude finished its turn) falls back to the pane check, which

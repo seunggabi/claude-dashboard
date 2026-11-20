@@ -1,6 +1,7 @@
 package session
 
 import (
+	"fmt"
 	"testing"
 	"time"
 
@@ -146,22 +147,27 @@ func TestTerminalSessions_skipsTmuxPanesAndDetachedProcesses(t *testing.T) {
 
 func TestStatusFromHook(t *testing.T) {
 	now := time.Now()
+	at := func(state string, d time.Duration) string {
+		return fmt.Sprintf("%s:%d", state, now.Add(d).Unix())
+	}
 	cases := []struct {
-		state    string
+		value    string
 		activity time.Time
 		want     Status
 		ok       bool
 	}{
-		{"active", now, StatusActive, true},
-		{"active", now.Add(-time.Minute), "", false},
-		{"waiting", now.Add(-time.Hour), StatusWaiting, true},
-		{"idle", now, "", false},
+		{at("active", 0), now, StatusActive, true},
+		{at("active", -time.Hour), now.Add(-time.Minute), "", false},
+		{at("waiting", -time.Hour), now.Add(-time.Hour), StatusWaiting, true},
+		{at("waiting", -time.Minute), now, "", false},
+		{at("idle", 0), now, "", false},
+		{"waiting", now, "", false},
 		{"", now, "", false},
 	}
 	for _, c := range cases {
-		got, ok := statusFromHook(c.state, c.activity)
+		got, ok := statusFromHook(c.value, c.activity)
 		if got != c.want || ok != c.ok {
-			t.Errorf("statusFromHook(%q) = %q, %v; want %q, %v", c.state, got, ok, c.want, c.ok)
+			t.Errorf("statusFromHook(%q) = %q, %v; want %q, %v", c.value, got, ok, c.want, c.ok)
 		}
 	}
 }

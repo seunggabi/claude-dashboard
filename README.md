@@ -237,12 +237,13 @@ The checks above are a guess from the screen. Claude Code hooks can report the s
     "PostToolUse": [{ "matcher": "*", "hooks": [{ "type": "command", "command": "claude-dashboard hook active" }] }],
     "PermissionRequest": [{ "matcher": "*", "hooks": [{ "type": "command", "command": "claude-dashboard hook waiting" }] }],
     "Notification": [{ "matcher": "elicitation_dialog", "hooks": [{ "type": "command", "command": "claude-dashboard hook waiting" }] }],
-    "Stop": [{ "hooks": [{ "type": "command", "command": "claude-dashboard hook idle" }] }]
+    "Stop": [{ "hooks": [{ "type": "command", "command": "claude-dashboard hook idle" }] }],
+    "SessionEnd": [{ "hooks": [{ "type": "command", "command": "claude-dashboard hook idle" }] }]
   }
 }
 ```
 
-`claude-dashboard hook` stores the state in the `@claude_state` option of the tmux session that runs Claude, and does nothing outside tmux. After `idle` (Claude finished its turn) the screen check above decides between `waiting` and `idle`. Claude Code fires no hook when you interrupt it, so an `active` report with no output for 30 seconds falls back to the screen check too.
+`claude-dashboard hook` stores the state in the `@claude_state` option of the tmux session that runs Claude, and does nothing outside tmux. After `idle` (Claude finished its turn) the screen check above decides between `waiting` and `idle`. Claude Code fires no hook when you interrupt it or cancel a prompt, so the screen check also takes over when an `active` report sees no output for 30 seconds, or when the pane keeps changing more than 5 seconds after a `waiting` report. The state belongs to the tmux session, so two Claude panes in one session share it.
 
 ## Configuration
 

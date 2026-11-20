@@ -3,11 +3,13 @@ package main
 import (
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/seunggabi/claude-dashboard/internal/app"
 	"github.com/seunggabi/claude-dashboard/internal/config"
@@ -18,6 +20,14 @@ import (
 var version = "dev"
 
 func main() {
+	// Claude Code hooks call this on every tool use: do nothing else first.
+	if len(os.Args) > 1 && os.Args[1] == "hook" {
+		if len(os.Args) > 2 {
+			runHook(os.Args[2])
+		}
+		os.Exit(0)
+	}
+
 	app.Version = version
 	session.SessionPrefix = config.Load().SessionPrefix
 	app.DrainStdin()
@@ -32,8 +42,7 @@ func main() {
 	// Skip for --version, --help, and setup commands
 	skipAutoSetup := len(os.Args) > 1 && (os.Args[1] == "--version" || os.Args[1] == "-v" ||
 		os.Args[1] == "--help" || os.Args[1] == "-h" || os.Args[1] == "setup" ||
-		os.Args[1] == "status" || // status output goes to the tmux status bar
-		os.Args[1] == "hook") // runs inside Claude Code hooks
+		os.Args[1] == "status") // status output goes to the tmux status bar
 	if !skipAutoSetup {
 		runAutoSetup()
 	}
@@ -50,13 +59,6 @@ func main() {
 			if err := setup.Setup(false, version); err != nil {
 				fmt.Fprintf(os.Stderr, "Setup failed: %v\n", err)
 				os.Exit(1)
-			}
-			os.Exit(0)
-		case "hook":
-			// Called by Claude Code hooks: record the state on the tmux session
-			// that runs this Claude. Never fail, so a hook never disturbs Claude.
-			if len(os.Args) > 2 && os.Getenv("TMUX_PANE") != "" {
-				_ = exec.Command("tmux", "set-option", "-q", "-t", os.Getenv("TMUX_PANE"), "@claude_state", os.Args[2]).Run()
 			}
 			os.Exit(0)
 		case "status":
@@ -106,6 +108,21 @@ func main() {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
+}
+
+// runHook records a Claude Code hook state on the tmux session running this
+// Claude, as "STATE:UNIXTIME". It never fails, so a hook never disturbs Claude.
+func runHook(state string) {
+	// Read the hook's JSON input so Claude never writes into a closed pipe.
+	if fi, err := os.Stdin.Stat(); err == nil && fi.Mode()&os.ModeCharDevice == 0 {
+		_, _ = io.Copy(io.Discard, os.Stdin)
+	}
+	pane := os.Getenv("TMUX_PANE")
+	if pane == "" {
+		return
+	}
+	value := fmt.Sprintf("%s:%d", state, time.Now().Unix())
+	_ = exec.Command("tmux", "set-option", "-q", "-t", pane, "@claude_state", value).Run()
 }
 
 // parseNewArgs parses the arguments that follow "new". A leading argument that
