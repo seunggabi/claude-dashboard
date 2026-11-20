@@ -3,10 +3,13 @@ package main
 import (
 	"errors"
 	"fmt"
+	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/seunggabi/claude-dashboard/internal/app"
 	"github.com/seunggabi/claude-dashboard/internal/config"
@@ -17,6 +20,14 @@ import (
 var version = "dev"
 
 func main() {
+	// Claude Code hooks call this on every tool use: do nothing else first.
+	if len(os.Args) > 1 && os.Args[1] == "hook" {
+		if len(os.Args) > 2 {
+			runHook(os.Args[2])
+		}
+		os.Exit(0)
+	}
+
 	app.Version = version
 	session.SessionPrefix = config.Load().SessionPrefix
 	app.DrainStdin()
@@ -99,6 +110,21 @@ func main() {
 	}
 }
 
+// runHook records a Claude Code hook state on the tmux session running this
+// Claude, as "STATE:UNIXTIME". It never fails, so a hook never disturbs Claude.
+func runHook(state string) {
+	// Read the hook's JSON input so Claude never writes into a closed pipe.
+	if fi, err := os.Stdin.Stat(); err == nil && fi.Mode()&os.ModeCharDevice == 0 {
+		_, _ = io.Copy(io.Discard, os.Stdin)
+	}
+	pane := os.Getenv("TMUX_PANE")
+	if pane == "" {
+		return
+	}
+	value := fmt.Sprintf("%s:%d", state, time.Now().Unix())
+	_ = exec.Command("tmux", "set-option", "-q", "-t", pane, "@claude_state", value).Run()
+}
+
 // parseNewArgs parses the arguments that follow "new". A leading argument that
 // is not a flag is the session name. --path and --args are consumed here;
 // every other argument is forwarded to claude.
@@ -167,6 +193,7 @@ Usage:
   claude-dashboard new [NAME] [options]                Create a new session (name defaults to path)
   claude-dashboard attach NAME                         Attach to a session directly
   claude-dashboard status                              Print waiting/active counts for the tmux status bar
+  claude-dashboard hook STATE                          Record active/waiting/idle from a Claude Code hook
   claude-dashboard --version                           Show version
   claude-dashboard --help                              Show this help
 

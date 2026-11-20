@@ -1,7 +1,9 @@
 package session
 
 import (
+	"fmt"
 	"testing"
+	"time"
 
 	"github.com/seunggabi/claude-dashboard/internal/monitor"
 )
@@ -140,5 +142,32 @@ func TestTerminalSessions_skipsTmuxPanesAndDetachedProcesses(t *testing.T) {
 	}
 	if got[0].Managed || got[0].Status != StatusTerminal {
 		t.Errorf("terminal session should be unmanaged with terminal status: %+v", got[0])
+	}
+}
+
+func TestStatusFromHook(t *testing.T) {
+	now := time.Now()
+	at := func(state string, d time.Duration) string {
+		return fmt.Sprintf("%s:%d", state, now.Add(d).Unix())
+	}
+	cases := []struct {
+		value    string
+		activity time.Time
+		want     Status
+		ok       bool
+	}{
+		{at("active", 0), now, StatusActive, true},
+		{at("active", -time.Hour), now.Add(-time.Minute), "", false},
+		{at("waiting", -time.Hour), now.Add(-time.Hour), StatusWaiting, true},
+		{at("waiting", -time.Minute), now, "", false},
+		{at("idle", 0), now, "", false},
+		{"waiting", now, "", false},
+		{"", now, "", false},
+	}
+	for _, c := range cases {
+		got, ok := statusFromHook(c.value, c.activity)
+		if got != c.want || ok != c.ok {
+			t.Errorf("statusFromHook(%q) = %q, %v; want %q, %v", c.value, got, ok, c.want, c.ok)
+		}
 	}
 }

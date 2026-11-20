@@ -226,6 +226,25 @@ claude-dashboard new my-project --path ~/code/foo -r
 | `○ idle` | Gray | Neither of the above |
 | `⊘ terminal` | Blue | Claude is running in a terminal tab outside tmux (read-only) |
 
+### Exact status with Claude Code hooks (optional)
+
+The checks above are a guess from the screen. Claude Code hooks can report the state instead: a session shows `waiting` as soon as Claude asks for permission or asks a question, and `active` while Claude works, even when its output is quiet. Add this to `~/.claude/settings.json` (merge it into an existing `hooks` key):
+
+```json
+{
+  "hooks": {
+    "UserPromptSubmit": [{ "hooks": [{ "type": "command", "command": "claude-dashboard hook active" }] }],
+    "PostToolUse": [{ "matcher": "*", "hooks": [{ "type": "command", "command": "claude-dashboard hook active" }] }],
+    "PermissionRequest": [{ "matcher": "*", "hooks": [{ "type": "command", "command": "claude-dashboard hook waiting" }] }],
+    "Notification": [{ "matcher": "elicitation_dialog", "hooks": [{ "type": "command", "command": "claude-dashboard hook waiting" }] }],
+    "Stop": [{ "hooks": [{ "type": "command", "command": "claude-dashboard hook idle" }] }],
+    "SessionEnd": [{ "hooks": [{ "type": "command", "command": "claude-dashboard hook idle" }] }]
+  }
+}
+```
+
+`claude-dashboard hook` stores the state in the `@claude_state` option of the tmux session that runs Claude, and does nothing outside tmux. After `idle` (Claude finished its turn) the screen check above decides between `waiting` and `idle`. Claude Code fires no hook when you interrupt it or cancel a prompt, so the screen check also takes over when an `active` report sees no output for 30 seconds, or when the pane keeps changing more than 5 seconds after a `waiting` report. The state belongs to the tmux session, so two Claude panes in one session share it.
+
 ## Configuration
 
 `~/.claude-dashboard/config.yaml` (optional; these are the defaults):

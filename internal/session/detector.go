@@ -5,6 +5,7 @@ import (
 	"os/exec"
 	"path"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -57,7 +58,7 @@ func (d *Detector) Detect(ctx context.Context) ([]Session, error) {
 			s := Session{
 				Name:      raw.Name,
 				Project:   extractProject(raw.Name, raw.Path),
-				Status:    d.detectStatus(ctx, raw.Name, raw.Activity),
+				Status:    d.detectStatus(ctx, raw.Name, raw.Activity, raw.ClaudeState),
 				StartedAt: raw.Created,
 				Activity:  raw.Activity,
 				Attached:  raw.Attached,
@@ -182,9 +183,15 @@ func getProcessCWD(pid string) string {
 	return result
 }
 
-// detectStatus determines session status by examining activity timestamp and pane content:
-// recent output is active, a visible question is waiting, anything else is idle.
-func (d *Detector) detectStatus(ctx context.Context, name string, lastActivity time.Time) Status {
+// detectStatus determines session status. When Claude Code hooks report a
+// state (see "claude-dashboard hook"), that state wins. Otherwise it guesses
+// from the activity timestamp and pane content: recent output is active, a
+// visible question is waiting, anything else is idle.
+func (d *Detector) detectStatus(ctx context.Context, name string, lastActivity time.Time, hookState string) Status {
+	if s, ok := statusFromHook(hookState, lastActivity); ok {
+		return s
+	}
+
 	// If activity is very recent (within 2 seconds), consider it active
 	// This handles cases where output is streaming but prompt is not visible yet
 	idleThreshold := 2 * time.Second
@@ -211,6 +218,41 @@ func (d *Detector) detectStatus(ctx context.Context, name string, lastActivity t
 	}
 
 	return StatusIdle
+}
+
+// staleActive is how long a session reported active by hooks may show no
+// output before the report is distrusted. Claude Code fires no hook when the
+// user interrupts it, so "active" can outlive the work.
+const staleActive = 30 * time.Second
+
+// staleWaiting is how long after a "waiting" report the pane may keep
+// producing output before the report is distrusted. Answering or cancelling
+// a prompt redraws the pane, and a denied or cancelled prompt fires no hook.
+const staleWaiting = 5 * time.Second
+
+// statusFromHook maps the "STATE:UNIXTIME" value written by
+// "claude-dashboard hook" to a Status. ok is false when there is no usable
+// state.
+func statusFromHook(value string, lastActivity time.Time) (Status, bool) {
+	state, at, _ := strings.Cut(value, ":")
+	ts, _ := strconv.ParseInt(at, 10, 64)
+	reportedAt := time.Unix(ts, 0)
+
+	switch state {
+	case "active":
+		if time.Since(lastActivity) > staleActive {
+			return "", false
+		}
+		return StatusActive, true
+	case "waiting":
+		if lastActivity.After(reportedAt.Add(staleWaiting)) {
+			return "", false
+		}
+		return StatusWaiting, true
+	}
+	// "idle" (Claude finished its turn) falls back to the pane check, which
+	// still tells a question to the user apart from a finished task.
+	return "", false
 }
 
 // buildProcChildren converts a monitor.ProcessTable into the children map
