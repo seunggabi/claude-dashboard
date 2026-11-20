@@ -37,6 +37,9 @@ func gitBranch(dir string) string {
 			if branch, ok := strings.CutPrefix(ref, "ref: refs/heads/"); ok {
 				return branch
 			}
+			if other, ok := strings.CutPrefix(ref, "ref: "); ok {
+				return other
+			}
 			if len(ref) > 7 {
 				return ref[:7]
 			}
