@@ -56,7 +56,11 @@ func overviewBlock(s session.Session, sum conversation.Summary, selected bool, w
 	} else {
 		name = lipgloss.NewStyle().Bold(true).Render(truncate(s.Name, textWidth-12))
 	}
-	lines := []string{fmt.Sprintf("%s %s  %s", marker, name, s.StatusString())}
+	head := fmt.Sprintf("%s %s  %s", marker, name, s.StatusString())
+	if s.Branch != "" {
+		head += styles.Muted.Render("  " + truncate(s.Branch, 30))
+	}
+	lines := []string{head}
 
 	title := sum.Title
 	if title == "" {
