@@ -137,6 +137,7 @@ Sessions run inside tmux - close your terminal, shut your laptop, and come back 
 | `Ctrl+K`  | Kill all idle sessions (with confirmation) |
 | `l`       | View session logs                          |
 | `d`       | Session detail view                        |
+| `o`       | Overview: title, last prompt and todos     |
 | `/`       | Filter / search sessions                   |
 | `r`       | Manual refresh                             |
 | `?`       | Help overlay                               |
@@ -182,6 +183,7 @@ To copy text while mouse mode is on, hold `Option (⌥)` (macOS) or `Shift` (Lin
 - **Session Detection** - Lists tmux sessions created by claude-dashboard, any other tmux session with `claude` in its process tree, and Claude processes running in plain terminal tabs.
 - **Log Viewer** (`l`) - For tmux sessions, the pane scrollback. For terminal sessions, the conversation history from the `.jsonl` files in `~/.claude/projects/`.
 - **Attach / Detach** (`enter` / `Ctrl+B d`) - Attach to tmux sessions and return to the dashboard on detach. Terminal sessions are read-only: they can be viewed but not attached or killed.
+- **Overview** - Press `o` to see every session at once: its title, the last prompt you typed, and its unfinished todos. Read from the Claude Code conversation log, so nothing has to be configured.
 - **Session Colors** - Each session gets a color derived from its name, shown as a marker at the start of its row. When you attach from claude-dashboard, the session name in the tmux status bar (`status-left`) uses the same color. The option is set on that session only.
 - **Git Branch** - The BRANCH column shows the branch checked out in each session's directory, so clones of the same repository are easy to tell apart. The filter matches it too.
 

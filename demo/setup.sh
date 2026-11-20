@@ -16,6 +16,23 @@ tmux new-session -d -s cd-infra -c "$HOME/code/infra" "claude idle"
 
 claude-dashboard setup >/dev/null 2>&1
 
+# Conversation logs for the overview view (o). Claude Code names the log
+# directory after the working directory with every non-alphanumeric
+# character replaced by "-".
+demo_log() {
+  local dir="$HOME/.claude/projects/$(printf '%s' "$1" | sed 's/[^a-zA-Z0-9]/-/g')"
+  mkdir -p "$dir"
+  printf '%s\n' "${@:2}" > "$dir/demo.jsonl"
+}
+demo_log "$HOME/code/api-server" \
+  '{"type":"user","message":{"role":"user","content":"Add rate limiting to the login endpoint"}}' \
+  '{"type":"ai-title","aiTitle":"Rate limit the login endpoint"}' \
+  '{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"t1","name":"TodoWrite","input":{"todos":[{"content":"Read the auth middleware","status":"completed"},{"content":"Add a token bucket per IP","status":"in_progress"},{"content":"Write tests for 429 responses","status":"pending"}]}}]}}'
+demo_log "$HOME/code/web-app" \
+  '{"type":"user","message":{"role":"user","content":"Migrate the settings page to the new form library"}}' \
+  '{"type":"ai-title","aiTitle":"Migrate settings page forms"}' \
+  '{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"t1","name":"TodoWrite","input":{"todos":[{"content":"Replace the profile form","status":"completed"},{"content":"Replace the billing form","status":"completed"},{"content":"Remove the old form library","status":"pending"}]}}]}}'
+
 cd "$HOME/code"
 PS1='$ '
 clear

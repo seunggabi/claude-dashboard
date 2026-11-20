@@ -38,6 +38,11 @@ Type "d" Sleep 3s
 Screenshot demo/shots/3-detail.png
 Escape Sleep 1s
 
+# Overview: title, last prompt and todos of every session
+Type "o" Sleep 3s
+Screenshot demo/shots/3a-overview.png
+Escape Sleep 1s
+
 # Filter
 Type "/" Sleep 500ms
 Type "api" Sleep 1s

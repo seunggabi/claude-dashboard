@@ -15,6 +15,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/seunggabi/claude-dashboard/internal/config"
+	"github.com/seunggabi/claude-dashboard/internal/conversation"
 	"github.com/seunggabi/claude-dashboard/internal/monitor"
 	"github.com/seunggabi/claude-dashboard/internal/session"
 	"github.com/seunggabi/claude-dashboard/internal/styles"
@@ -37,6 +38,7 @@ const (
 	ViewDetail
 	ViewCreate
 	ViewHelp
+	ViewOverview
 )
 
 // Model is the main Bubble Tea model.
@@ -68,6 +70,11 @@ type Model struct {
 	// Filter
 	filterQuery string
 
+	// Overview: conversation summaries by session name. loadingSummaries is
+	// true while a load runs, so slow loads never overlap.
+	summaries        map[string]conversation.Summary
+	loadingSummaries bool
+
 	// Attach target (set when user wants to attach, triggers Quit)
 	attachTarget string
 }
@@ -87,6 +94,9 @@ type KillMsg struct {
 type CreateMsg struct {
 	Err error
 }
+
+// SummariesMsg carries conversation summaries for the overview.
+type SummariesMsg map[string]conversation.Summary
 
 // LogsMsg carries log content.
 type LogsMsg struct {
@@ -139,10 +149,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case monitor.TickMsg:
-		return m, tea.Batch(
-			m.refreshSessions,
-			monitor.TickCmd(m.cfg.RefreshInterval),
-		)
+		cmds := []tea.Cmd{m.refreshSessions, monitor.TickCmd(m.cfg.RefreshInterval)}
+		if m.view == ViewOverview {
+			cmds = append(cmds, m.startSummaries())
+		}
+		return m, tea.Batch(cmds...)
+
+	case SummariesMsg:
+		m.summaries = msg
+		m.loadingSummaries = false
+		return m, nil
 
 	case SessionsMsg:
 		if msg.Err != nil {
@@ -212,6 +228,8 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.handleCreateKey(msg)
 	case ViewHelp:
 		return m.handleHelpKey(msg)
+	case ViewOverview:
+		return m.handleOverviewKey(msg)
 	}
 
 	return m, nil
@@ -296,6 +314,25 @@ func (m Model) handleDashboardKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, m.refreshSessions
 	case "?":
 		m.view = ViewHelp
+	case "o":
+		m.view = ViewOverview
+		cmd := m.startSummaries()
+		return m, cmd
+	}
+	return m, nil
+}
+
+// handleOverviewKey reuses the dashboard keys for moving, attaching,
+// refreshing and quitting; esc or o goes back to the dashboard.
+func (m Model) handleOverviewKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "esc", "o":
+		m.view = ViewDashboard
+	case "up", "k", "down", "j", "enter", "q":
+		return m.handleDashboardKey(msg)
+	case "r":
+		cmd := m.startSummaries()
+		return m, tea.Batch(m.refreshSessions, cmd)
 	}
 	return m, nil
 }
@@ -450,6 +487,10 @@ func (m Model) View() string {
 		b.WriteString(ui.RenderCreateForm(m.createForm, m.width))
 	case ViewHelp:
 		b.WriteString(ui.RenderHelp(m.width))
+	case ViewOverview:
+		content := ui.RenderOverview(sessions, m.summaries, m.cursor, m.width, contentHeight)
+		b.WriteString(content)
+		b.WriteString(strings.Repeat("\n", max(0, contentHeight-strings.Count(content, "\n"))))
 	}
 
 	// Confirm overlay
@@ -493,6 +534,8 @@ func (m Model) viewName() string {
 		return "create"
 	case ViewHelp:
 		return "help"
+	case ViewOverview:
+		return "overview"
 	default:
 		return "dashboard"
 	}
@@ -598,6 +641,33 @@ func (m Model) fetchLogs(name string) tea.Cmd {
 	return func() tea.Msg {
 		content, err := m.manager.GetLogs(context.Background(), name, m.cfg.LogHistory)
 		return LogsMsg{Content: content, Err: err}
+	}
+}
+
+// startSummaries starts a summary load unless one is still running.
+func (m *Model) startSummaries() tea.Cmd {
+	if m.loadingSummaries {
+		return nil
+	}
+	m.loadingSummaries = true
+	return m.loadSummaries()
+}
+
+// loadSummaries reads the conversation summary of every session with a
+// working directory.
+func (m Model) loadSummaries() tea.Cmd {
+	sessions := m.sessions
+	return func() tea.Msg {
+		out := SummariesMsg{}
+		for _, s := range sessions {
+			if s.Path == "" {
+				continue
+			}
+			if sum, err := conversation.ReadSummary(s.Path); err == nil {
+				out[s.Name] = sum
+			}
+		}
+		return out
 	}
 }
 
