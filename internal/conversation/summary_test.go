@@ -50,7 +50,7 @@ func TestReadSummary_tasks(t *testing.T) {
 	workDir := writeLog(t,
 		`{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"c1","name":"TaskCreate","input":{"subject":"one"}},{"type":"tool_use","id":"c2","name":"TaskCreate","input":{"subject":"two"}}]}}`,
 		`{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"c1","content":"ok"}]},"toolUseResult":{"task":{"id":"1","subject":"one"}}}`,
-		`{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"c2","content":"ok"}]},"toolUseResult":{"task":{"id":"2","subject":"two"}}}`,
+		`{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"c2","content":"ok"}]},"toolUseResult":{"task":{"id":2,"subject":"two"}}}`,
 		`{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"u1","name":"TaskUpdate","input":{"taskId":"1","status":"completed"}},{"type":"tool_use","id":"u2","name":"TaskUpdate","input":{"taskId":"2","status":"deleted"}}]}}`,
 	)
 

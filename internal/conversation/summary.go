@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"os"
 	"strings"
+	"sync"
+	"time"
 )
 
 // Todo is one item of a session's todo list.
@@ -20,6 +22,19 @@ type Summary struct {
 	Todos      []Todo
 }
 
+// summaryCache keeps the last summary of each log file, so an unchanged log
+// is not read again on every refresh.
+var (
+	summaryMu    sync.Mutex
+	summaryCache = map[string]cachedSummary{}
+)
+
+type cachedSummary struct {
+	modTime time.Time
+	size    int64
+	summary Summary
+}
+
 // ReadSummary reads the most recent conversation log for a working directory
 // and returns its title, last prompt and current todo list.
 func ReadSummary(workDir string) (Summary, error) {
@@ -27,6 +42,29 @@ func ReadSummary(workDir string) (Summary, error) {
 	if err != nil {
 		return Summary{}, err
 	}
+	info, err := os.Stat(jsonlFile)
+	if err != nil {
+		return Summary{}, err
+	}
+
+	summaryMu.Lock()
+	c, ok := summaryCache[jsonlFile]
+	summaryMu.Unlock()
+	if ok && c.modTime.Equal(info.ModTime()) && c.size == info.Size() {
+		return c.summary, nil
+	}
+
+	s, err := parseSummary(jsonlFile)
+	if err != nil {
+		return Summary{}, err
+	}
+	summaryMu.Lock()
+	summaryCache[jsonlFile] = cachedSummary{info.ModTime(), info.Size(), s}
+	summaryMu.Unlock()
+	return s, nil
+}
+
+func parseSummary(jsonlFile string) (Summary, error) {
 	f, err := os.Open(jsonlFile)
 	if err != nil {
 		return Summary{}, err
@@ -52,11 +90,8 @@ func ReadSummary(workDir string) (Summary, error) {
 			Message *struct {
 				Content json.RawMessage `json:"content"`
 			} `json:"message"`
-			ToolUseResult struct {
-				Task struct {
-					ID string `json:"id"`
-				} `json:"task"`
-			} `json:"toolUseResult"`
+			// An object for TaskCreate, but a string for failed tools.
+			ToolUseResult json.RawMessage `json:"toolUseResult"`
 		}
 		if json.Unmarshal(scanner.Bytes(), &e) != nil {
 			continue
@@ -124,7 +159,7 @@ func ReadSummary(workDir string) (Summary, error) {
 			case b.Type == "tool_result":
 				// TaskCreate's new id arrives with its result.
 				subject, ok := pendingCreate[b.ToolUseID]
-				if id := e.ToolUseResult.Task.ID; ok && id != "" {
+				if id := createdTaskID(e.ToolUseResult); ok && id != "" {
 					delete(pendingCreate, b.ToolUseID)
 					taskIndex[id] = len(tasks)
 					tasks = append(tasks, Todo{subject, "pending"})
@@ -142,5 +177,21 @@ func ReadSummary(workDir string) (Summary, error) {
 			}
 		}
 	}
-	return s, scanner.Err()
+	// A scanner error (such as a line over the buffer limit) stops the read
+	// early. What was parsed so far is still worth showing.
+	return s, nil
+}
+
+// createdTaskID returns the task id from a TaskCreate result, accepting a
+// string or a number, or "" when raw is not a TaskCreate result.
+func createdTaskID(raw json.RawMessage) string {
+	var r struct {
+		Task struct {
+			ID json.RawMessage `json:"id"`
+		} `json:"task"`
+	}
+	if json.Unmarshal(raw, &r) != nil {
+		return ""
+	}
+	return strings.Trim(string(r.Task.ID), `"`)
 }

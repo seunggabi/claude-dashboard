@@ -50,9 +50,11 @@ func overviewBlock(s session.Session, sum conversation.Summary, selected bool, w
 	}
 
 	marker := lipgloss.NewStyle().Foreground(lipgloss.Color(styles.SessionColor(s.Name))).Render("▌")
-	name := lipgloss.NewStyle().Bold(true).Render(s.Name)
+	var name string
 	if selected {
-		name = styles.Selected.Render(" " + s.Name + " ")
+		name = styles.Selected.Render(" " + truncate(s.Name, textWidth-14) + " ")
+	} else {
+		name = lipgloss.NewStyle().Bold(true).Render(truncate(s.Name, textWidth-12))
 	}
 	lines := []string{fmt.Sprintf("%s %s  %s", marker, name, s.StatusString())}
 
@@ -60,6 +62,7 @@ func overviewBlock(s session.Session, sum conversation.Summary, selected bool, w
 	if title == "" {
 		title = styles.Muted.Render("(no title yet)")
 	} else {
+		title, _, _ = strings.Cut(title, "\n")
 		title = truncate(title, textWidth)
 	}
 	lines = append(lines, "    "+title)
@@ -78,6 +81,7 @@ func overviewBlock(s session.Session, sum conversation.Summary, selected bool, w
 		}
 		lines = append(lines, styles.Muted.Render(fmt.Sprintf("    todo %d/%d done", done, len(sum.Todos))))
 		for _, t := range sum.Todos {
+			t.Content, _, _ = strings.Cut(t.Content, "\n")
 			switch t.Status {
 			case "completed":
 				continue

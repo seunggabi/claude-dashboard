@@ -70,8 +70,10 @@ type Model struct {
 	// Filter
 	filterQuery string
 
-	// Overview: conversation summaries by session name
-	summaries map[string]conversation.Summary
+	// Overview: conversation summaries by session name. loadingSummaries is
+	// true while a load runs, so slow loads never overlap.
+	summaries        map[string]conversation.Summary
+	loadingSummaries bool
 
 	// Attach target (set when user wants to attach, triggers Quit)
 	attachTarget string
@@ -149,12 +151,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case monitor.TickMsg:
 		cmds := []tea.Cmd{m.refreshSessions, monitor.TickCmd(m.cfg.RefreshInterval)}
 		if m.view == ViewOverview {
-			cmds = append(cmds, m.loadSummaries())
+			cmds = append(cmds, m.startSummaries())
 		}
 		return m, tea.Batch(cmds...)
 
 	case SummariesMsg:
 		m.summaries = msg
+		m.loadingSummaries = false
 		return m, nil
 
 	case SessionsMsg:
@@ -313,7 +316,8 @@ func (m Model) handleDashboardKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.view = ViewHelp
 	case "o":
 		m.view = ViewOverview
-		return m, m.loadSummaries()
+		cmd := m.startSummaries()
+		return m, cmd
 	}
 	return m, nil
 }
@@ -327,7 +331,8 @@ func (m Model) handleOverviewKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "up", "k", "down", "j", "enter", "q":
 		return m.handleDashboardKey(msg)
 	case "r":
-		return m, tea.Batch(m.refreshSessions, m.loadSummaries())
+		cmd := m.startSummaries()
+		return m, tea.Batch(m.refreshSessions, cmd)
 	}
 	return m, nil
 }
@@ -637,6 +642,15 @@ func (m Model) fetchLogs(name string) tea.Cmd {
 		content, err := m.manager.GetLogs(context.Background(), name, m.cfg.LogHistory)
 		return LogsMsg{Content: content, Err: err}
 	}
+}
+
+// startSummaries starts a summary load unless one is still running.
+func (m *Model) startSummaries() tea.Cmd {
+	if m.loadingSummaries {
+		return nil
+	}
+	m.loadingSummaries = true
+	return m.loadSummaries()
 }
 
 // loadSummaries reads the conversation summary of every session with a
