@@ -29,7 +29,8 @@ type Session struct {
 	CPU       float64
 	Memory    float64
 	Path      string
-	Managed   bool // true = tmux session (can attach/detach), false = terminal process (read-only)
+	Branch    string // git branch checked out in Path, "" outside a repository
+	Managed   bool   // true = tmux session (can attach/detach), false = terminal process (read-only)
 }
 
 // Uptime returns the human-readable uptime string.

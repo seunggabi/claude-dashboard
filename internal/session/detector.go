@@ -81,6 +81,7 @@ func (d *Detector) Detect(ctx context.Context) ([]Session, error) {
 	sessions = append(sessions, terminalSessions(procTable, panePIDs)...)
 
 	for i := range sessions {
+		sessions[i].Branch = gitBranch(sessions[i].Path)
 		if sessions[i].PID != "" {
 			info := monitor.GetChildProcessInfo(sessions[i].PID, procTable)
 			sessions[i].CPU = info.CPU

@@ -183,6 +183,7 @@ To copy text while mouse mode is on, hold `Option (⌥)` (macOS) or `Shift` (Lin
 - **Log Viewer** (`l`) - For tmux sessions, the pane scrollback. For terminal sessions, the conversation history from the `.jsonl` files in `~/.claude/projects/`.
 - **Attach / Detach** (`enter` / `Ctrl+B d`) - Attach to tmux sessions and return to the dashboard on detach. Terminal sessions are read-only: they can be viewed but not attached or killed.
 - **Session Colors** - Each session gets a color derived from its name, shown as a marker at the start of its row. When you attach from claude-dashboard, the session name in the tmux status bar (`status-left`) uses the same color. The option is set on that session only.
+- **Git Branch** - The BRANCH column shows the branch checked out in each session's directory, so clones of the same repository are easy to tell apart. The filter matches it too.
 
 ### Create Session
 

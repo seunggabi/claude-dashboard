@@ -148,7 +148,8 @@ func FilterSessions(sessions []Session, query string) []Session {
 		if strings.Contains(strings.ToLower(s.Name), query) ||
 			strings.Contains(strings.ToLower(s.Project), query) ||
 			strings.Contains(strings.ToLower(string(s.Status)), query) ||
-			strings.Contains(strings.ToLower(s.Path), query) {
+			strings.Contains(strings.ToLower(s.Path), query) ||
+			strings.Contains(strings.ToLower(s.Branch), query) {
 			filtered = append(filtered, s)
 		}
 	}

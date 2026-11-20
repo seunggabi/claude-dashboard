@@ -17,7 +17,8 @@ var DashboardColumns = []struct {
 }{
 	{"#", 4},
 	{"NAME", 0},    // flexible width
-	{"PROJECT", 35},
+	{"PROJECT", 20},
+	{"BRANCH", 20},
 	{"STATUS", 12},
 	{"UPTIME", 10},
 	{"CPU", 8},
@@ -53,6 +54,7 @@ func RenderDashboard(sessions []session.Session, cursor int, width int, scrollOf
 		DashboardColumns[5].Title,
 		DashboardColumns[6].Title,
 		DashboardColumns[7].Title,
+		DashboardColumns[8].Title,
 		nameWidth, pathWidth,
 	)
 	b.WriteString(styles.Header.Render(header))
@@ -84,7 +86,8 @@ func RenderDashboard(sessions []session.Session, cursor int, width int, scrollOf
 		row := renderRow(
 			fmt.Sprintf("%d", i+1),
 			truncate(s.Name, nameWidth),
-			truncate(s.Project, DashboardColumns[2].Width),
+			truncate(s.Project, DashboardColumns[2].Width-2),
+			truncate(s.Branch, DashboardColumns[3].Width-2),
 			s.StatusString(),
 			s.Uptime(),
 			fmt.Sprintf("%.1f%%", s.CPU),
@@ -123,9 +126,9 @@ func RenderDashboard(sessions []session.Session, cursor int, width int, scrollOf
 	return b.String()
 }
 
-func renderRow(idx, name, project, status, uptime, cpu, mem, path string, nameWidth, pathWidth int) string {
-	return fmt.Sprintf("  %-4s%-*s  %-35s%-12s%-10s%-8s%-8s%-*s",
-		idx, nameWidth, name, project, status, uptime, cpu, mem, pathWidth, path)
+func renderRow(idx, name, project, branch, status, uptime, cpu, mem, path string, nameWidth, pathWidth int) string {
+	return fmt.Sprintf("  %-4s%-*s  %-20s%-20s%-12s%-10s%-8s%-8s%-*s",
+		idx, nameWidth, name, project, branch, status, uptime, cpu, mem, pathWidth, path)
 }
 
 func truncate(s string, maxLen int) string {
