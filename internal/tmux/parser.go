@@ -14,12 +14,15 @@ type RawSession struct {
 	Windows  int
 	Activity time.Time
 	Path     string
+	// ClaudeState is the @claude_state session option set by the
+	// claude-dashboard hook command, or "" when hooks are not installed.
+	ClaudeState string
 }
 
 // SessionFormat is the tmux format string for listing sessions.
 // The activity field is window_activity: it follows pane output, whereas
 // session_activity only follows client input and stays still while detached.
-const SessionFormat = "#{session_name}|#{session_created}|#{session_attached}|#{session_windows}|#{window_activity}|#{session_path}"
+const SessionFormat = "#{session_name}|#{session_created}|#{session_attached}|#{session_windows}|#{window_activity}|#{session_path}|#{@claude_state}"
 
 // ParseSessions parses tmux list-sessions output.
 func ParseSessions(output string) []RawSession {
@@ -46,14 +49,18 @@ func ParseSessions(output string) []RawSession {
 		windows, _ := strconv.Atoi(parts[3])
 		activity := parseUnixTimestamp(parts[4])
 
-		sessions = append(sessions, RawSession{
+		raw := RawSession{
 			Name:     parts[0],
 			Created:  created,
 			Attached: attached,
 			Windows:  windows,
 			Activity: activity,
 			Path:     parts[5],
-		})
+		}
+		if len(parts) > 6 {
+			raw.ClaudeState = parts[6]
+		}
+		sessions = append(sessions, raw)
 	}
 
 	return sessions

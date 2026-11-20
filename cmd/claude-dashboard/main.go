@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -31,7 +32,8 @@ func main() {
 	// Skip for --version, --help, and setup commands
 	skipAutoSetup := len(os.Args) > 1 && (os.Args[1] == "--version" || os.Args[1] == "-v" ||
 		os.Args[1] == "--help" || os.Args[1] == "-h" || os.Args[1] == "setup" ||
-		os.Args[1] == "status") // status output goes to the tmux status bar
+		os.Args[1] == "status" || // status output goes to the tmux status bar
+		os.Args[1] == "hook") // runs inside Claude Code hooks
 	if !skipAutoSetup {
 		runAutoSetup()
 	}
@@ -48,6 +50,13 @@ func main() {
 			if err := setup.Setup(false, version); err != nil {
 				fmt.Fprintf(os.Stderr, "Setup failed: %v\n", err)
 				os.Exit(1)
+			}
+			os.Exit(0)
+		case "hook":
+			// Called by Claude Code hooks: record the state on the tmux session
+			// that runs this Claude. Never fail, so a hook never disturbs Claude.
+			if len(os.Args) > 2 && os.Getenv("TMUX_PANE") != "" {
+				_ = exec.Command("tmux", "set-option", "-q", "-t", os.Getenv("TMUX_PANE"), "@claude_state", os.Args[2]).Run()
 			}
 			os.Exit(0)
 		case "status":
@@ -167,6 +176,7 @@ Usage:
   claude-dashboard new [NAME] [options]                Create a new session (name defaults to path)
   claude-dashboard attach NAME                         Attach to a session directly
   claude-dashboard status                              Print waiting/active counts for the tmux status bar
+  claude-dashboard hook STATE                          Record active/waiting/idle from a Claude Code hook
   claude-dashboard --version                           Show version
   claude-dashboard --help                              Show this help
 
