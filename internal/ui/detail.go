@@ -34,6 +34,7 @@ func RenderDetail(s *session.Session, width int) string {
 		{"CPU", fmt.Sprintf("%.1f%%", s.CPU)},
 		{"Memory", fmt.Sprintf("%.1f%%", s.Memory)},
 		{"Path", s.Path},
+		{"Branch", s.Branch},
 		{"Attached", fmt.Sprintf("%v", s.Attached)},
 		{"Started", s.StartedAt.Format("2006-01-02 15:04:05")},
 	}
