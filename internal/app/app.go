@@ -483,7 +483,11 @@ func (m Model) View() string {
 	case ViewHelp:
 		b.WriteString(ui.RenderHelp(m.width))
 	case ViewOverview:
-		b.WriteString(ui.RenderOverview(sessions, m.summaries, m.cursor, m.width, contentHeight))
+		content := ui.RenderOverview(sessions, m.summaries, m.cursor, m.width, contentHeight)
+		b.WriteString(content)
+		b.WriteString(strings.Repeat("
+", max(0, contentHeight-strings.Count(content, "
+"))))
 	}
 
 	// Confirm overlay
