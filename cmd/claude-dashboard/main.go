@@ -178,11 +178,19 @@ func defaultSessionName(path, homeDir string) string {
 // isInteractive reports whether both stdin and stdout are terminals, i.e.
 // whether there is a person who can answer a prompt.
 func isInteractive() bool {
-	for _, f := range []*os.File{os.Stdin, os.Stdout} {
-		info, err := f.Stat()
-		if err != nil || info.Mode()&os.ModeCharDevice == 0 {
-			return false
-		}
+	return isTerminal(os.Stdin) && isTerminal(os.Stdout)
+}
+
+// isTerminal reports whether f is a terminal a person could be typing at.
+// /dev/null is a character device too, but a script run with </dev/null has
+// nobody to ask, so it does not count.
+func isTerminal(f *os.File) bool {
+	info, err := f.Stat()
+	if err != nil || info.Mode()&os.ModeCharDevice == 0 {
+		return false
+	}
+	if null, err := os.Stat(os.DevNull); err == nil && os.SameFile(info, null) {
+		return false
 	}
 	return true
 }
