@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"errors"
 	"fmt"
 	"io"
@@ -38,7 +39,7 @@ func main() {
 		_ = setup.UpdateVersionCache(version)
 	}
 
-	// Auto-setup on first run (before any command)
+	// Offer tmux setup on first run (asks first; never changes anything without consent)
 	// Skip for --version, --help, and setup commands
 	skipAutoSetup := len(os.Args) > 1 && (os.Args[1] == "--version" || os.Args[1] == "-v" ||
 		os.Args[1] == "--help" || os.Args[1] == "-h" || os.Args[1] == "setup" ||
@@ -56,6 +57,10 @@ func main() {
 			printHelp()
 			os.Exit(0)
 		case "setup":
+			if len(os.Args) > 2 && os.Args[2] == "--dry-run" {
+				fmt.Print(setup.Plan())
+				os.Exit(0)
+			}
 			if err := setup.Setup(false, version); err != nil {
 				fmt.Fprintf(os.Stderr, "Setup failed: %v\n", err)
 				os.Exit(1)
@@ -170,17 +175,59 @@ func defaultSessionName(path, homeDir string) string {
 	return invalidNameChars.ReplaceAllString(rel, "-")
 }
 
-// runAutoSetup runs first-time setup if not already configured.
+// isInteractive reports whether both stdin and stdout are terminals, i.e.
+// whether there is a person who can answer a prompt.
+func isInteractive() bool {
+	return isTerminal(os.Stdin) && isTerminal(os.Stdout)
+}
+
+// isTerminal reports whether f is a terminal a person could be typing at.
+// /dev/null is a character device too, but a script run with </dev/null has
+// nobody to ask, so it does not count.
+func isTerminal(f *os.File) bool {
+	info, err := f.Stat()
+	if err != nil || info.Mode()&os.ModeCharDevice == 0 {
+		return false
+	}
+	if null, err := os.Stat(os.DevNull); err == nil && os.SameFile(info, null) {
+		return false
+	}
+	return true
+}
+
+// runAutoSetup offers first-time tmux setup. It never changes anything
+// without an explicit "y", and does nothing when setup is already done, the
+// user declined before, CLAUDE_DASHBOARD_NO_SETUP is set, or there is no
+// terminal to ask on (scripts, pipes, hooks).
 func runAutoSetup() {
-	if !setup.CheckSetup() {
-		fmt.Println("📦 First time setup detected...")
+	if setup.CheckSetup() || setup.IsDeclined() || os.Getenv(setup.NoSetupEnv) != "" {
+		return
+	}
+	if !isInteractive() {
+		return
+	}
+
+	fmt.Println("📦 First run: claude-dashboard can integrate with tmux (optional).")
+	fmt.Println()
+	fmt.Print(setup.Plan())
+	fmt.Println()
+	fmt.Print("Apply these changes? [y/N] ")
+
+	answer, _ := bufio.NewReader(os.Stdin).ReadString('\n')
+	switch strings.ToLower(strings.TrimSpace(answer)) {
+	case "y", "yes":
 		fmt.Println()
 		if err := setup.Setup(false, version); err != nil {
-			fmt.Fprintf(os.Stderr, "Auto-setup failed: %v\n", err)
+			fmt.Fprintf(os.Stderr, "Setup failed: %v\n", err)
 			fmt.Println()
 			fmt.Println("You can run 'claude-dashboard setup' manually later.")
 			fmt.Println()
 		}
+	default:
+		_ = setup.MarkDeclined()
+		fmt.Println()
+		fmt.Println("Skipped. Nothing was changed. Run 'claude-dashboard setup' any time to enable it.")
+		fmt.Println()
 	}
 }
 
@@ -189,7 +236,8 @@ func printHelp() {
 
 Usage:
   claude-dashboard                                     Start the TUI dashboard
-  claude-dashboard setup                               Install helper scripts and configure tmux
+  claude-dashboard setup [--dry-run]                   Install helper scripts and configure tmux
+                                                       (--dry-run only shows what would change)
   claude-dashboard new [NAME] [options]                Create a new session (name defaults to path)
   claude-dashboard attach NAME                         Attach to a session directly
   claude-dashboard status                              Print waiting/active counts for the tmux status bar
