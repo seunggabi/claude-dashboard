@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 //go:embed scripts/tmux-mouse-toggle.sh
@@ -53,23 +54,38 @@ func InstallScripts() error {
 	return nil
 }
 
-// SetupTmuxConfig adds the required tmux configuration
-func SetupTmuxConfig() error {
-	homeDir, err := os.UserHomeDir()
-	if err != nil {
-		return fmt.Errorf("failed to get home directory: %w", err)
-	}
+// tmuxConfigBlock is the configuration claude-dashboard appends to ~/.tmux.conf.
+const tmuxConfigBlock = `
+# claude-dashboard: Increase scrollback buffer for full history capture
+set -g history-limit 50000
 
-	tmuxConfPath := filepath.Join(homeDir, ".tmux.conf")
+# claude-dashboard: F12 key binding for mouse mode toggle
+bind-key -n F12 run-shell "~/.local/bin/claude-dashboard-mouse-toggle"
 
-	// Read existing config
-	var existingConfig string
-	if data, err := os.ReadFile(tmuxConfPath); err == nil {
-		existingConfig = string(data)
-	}
+# claude-dashboard: Ctrl+S key binding for saving pane history
+bind-key -n C-s run-shell "~/.local/bin/claude-dashboard-save-history"
 
+# claude-dashboard: Ctrl+B g opens the dashboard in a popup (tmux 3.2+)
+bind-key g display-popup -E -w 90% -h 80% claude-dashboard
+
+# claude-dashboard: Status bar with session counts, version check and mouse status
+set -g status-right-length 120
+set -g status-right "#(claude-dashboard status)#(~/.local/bin/claude-dashboard-status-bar) | [F12] #[fg=#{?mouse,green,red}]Mouse:#{?mouse,ON,OFF}#[default] | %H:%M"
+set -g status-interval 5
+
+# claude-dashboard: Enable mouse mode by default
+set -g mouse on
+
+# claude-dashboard: Terminal overrides for better mouse support
+set -g terminal-overrides 'xterm*:smcup@:rmcup@'
+`
+
+// buildTmuxConfig returns existing with any earlier claude-dashboard block
+// removed and the current block appended. It is pure so it can be tested
+// without touching the real home directory.
+func buildTmuxConfig(existing string) string {
 	// Remove old/duplicate claude-dashboard configurations
-	lines := strings.Split(existingConfig, "\n")
+	lines := strings.Split(existing, "\n")
 	var cleanedLines []string
 	skipUntilBlank := false
 
@@ -107,40 +123,49 @@ func SetupTmuxConfig() error {
 		cleanedLines = cleanedLines[:len(cleanedLines)-1]
 	}
 
-	// Configuration to add
-	config := `
-# claude-dashboard: Increase scrollback buffer for full history capture
-set -g history-limit 50000
+	return strings.Join(cleanedLines, "\n") + tmuxConfigBlock
+}
 
-# claude-dashboard: F12 key binding for mouse mode toggle
-bind-key -n F12 run-shell "~/.local/bin/claude-dashboard-mouse-toggle"
+// SetupTmuxConfig adds the required tmux configuration.
+func SetupTmuxConfig() error {
+	_, err := SetupTmuxConfigWithBackup()
+	return err
+}
 
-# claude-dashboard: Ctrl+S key binding for saving pane history
-bind-key -n C-s run-shell "~/.local/bin/claude-dashboard-save-history"
-
-# claude-dashboard: Ctrl+B g opens the dashboard in a popup (tmux 3.2+)
-bind-key g display-popup -E -w 90% -h 80% claude-dashboard
-
-# claude-dashboard: Status bar with session counts, version check and mouse status
-set -g status-right-length 120
-set -g status-right "#(claude-dashboard status)#(~/.local/bin/claude-dashboard-status-bar) | [F12] #[fg=#{?mouse,green,red}]Mouse:#{?mouse,ON,OFF}#[default] | %H:%M"
-set -g status-interval 5
-
-# claude-dashboard: Enable mouse mode by default
-set -g mouse on
-
-# claude-dashboard: Terminal overrides for better mouse support
-set -g terminal-overrides 'xterm*:smcup@:rmcup@'
-`
-
-	// Write cleaned config with new configuration
-	newConfig := strings.Join(cleanedLines, "\n") + config
-
-	if err := os.WriteFile(tmuxConfPath, []byte(newConfig), 0644); err != nil {
-		return fmt.Errorf("failed to write tmux config: %w", err)
+// SetupTmuxConfigWithBackup adds the tmux configuration and returns the path
+// of the backup it made of the previous ~/.tmux.conf. The backup path is empty
+// when there was no file to back up or nothing needed to change. The file is
+// left untouched when it already holds the current configuration.
+func SetupTmuxConfigWithBackup() (string, error) {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return "", fmt.Errorf("failed to get home directory: %w", err)
 	}
 
-	return nil
+	tmuxConfPath := filepath.Join(homeDir, ".tmux.conf")
+
+	data, readErr := os.ReadFile(tmuxConfPath)
+	existed := readErr == nil
+	existingConfig := string(data)
+
+	newConfig := buildTmuxConfig(existingConfig)
+	if existed && newConfig == existingConfig {
+		return "", nil
+	}
+
+	backupPath := ""
+	if existed {
+		backupPath = tmuxConfPath + ".claude-dashboard-bak-" + time.Now().Format("20060102-150405")
+		if err := os.WriteFile(backupPath, data, 0644); err != nil {
+			return "", fmt.Errorf("failed to back up tmux config: %w", err)
+		}
+	}
+
+	if err := os.WriteFile(tmuxConfPath, []byte(newConfig), 0644); err != nil {
+		return backupPath, fmt.Errorf("failed to write tmux config: %w", err)
+	}
+
+	return backupPath, nil
 }
 
 // ReloadTmuxConfig reloads the tmux configuration
@@ -203,12 +228,17 @@ func Setup(silent bool, version string) error {
 		fmt.Println("🔧 Configuring tmux...")
 	}
 
-	if err := SetupTmuxConfig(); err != nil {
+	backupPath, err := SetupTmuxConfigWithBackup()
+	if err != nil {
 		return fmt.Errorf("failed to setup tmux config: %w", err)
 	}
+	_ = ClearDeclined()
 
 	if !silent {
 		fmt.Println("✅ Tmux configuration added to ~/.tmux.conf")
+		if backupPath != "" {
+			fmt.Printf("   Previous config backed up to %s\n", backupPath)
+		}
 		fmt.Println()
 		fmt.Println("🔄 Reloading tmux configuration...")
 	}

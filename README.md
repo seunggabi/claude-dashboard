@@ -57,10 +57,14 @@ make install
 claude-dashboard   # Launch the TUI dashboard
 ```
 
-The first run performs a one-time setup. You can repeat it at any time with `claude-dashboard setup`. Setup:
+On the first run in a terminal, claude-dashboard offers to set up its tmux integration. It shows exactly what would change and asks `[y/N]`. **Nothing is modified unless you answer `y`.** If you decline, you are not asked again; run `claude-dashboard setup` whenever you want it.
+
+Setup:
 
 - installs three helper scripts to `~/.local/bin/`
-- appends a `claude-dashboard` block to `~/.tmux.conf`: `F12` mouse toggle, `Ctrl+S` history save, a status bar with waiting/active session counts and version info, mouse mode on, and a 50,000-line scrollback
+- backs up your existing `~/.tmux.conf` to `~/.tmux.conf.claude-dashboard-bak-<timestamp>`, then appends a `claude-dashboard` block: `F12` mouse toggle, `Ctrl+S` history save, a status bar with waiting/active session counts and version info, mouse mode on, and a 50,000-line scrollback
+
+To preview the changes without applying them, run `claude-dashboard setup --dry-run`. To never be offered setup (for example on a shared machine), set `CLAUDE_DASHBOARD_NO_SETUP=1`. When there is no terminal (pipes, scripts, Claude Code hooks), setup is never offered.
 
 ### 💡 Pro Tip: Super Fast Session Creation
 
@@ -263,7 +267,8 @@ claude-dashboard                       # Launch TUI dashboard
 claude-dashboard new [name]            # Create session (auto-name if omitted)
 claude-dashboard attach <session>      # Attach directly (skip TUI)
 claude-dashboard status                # Waiting/active counts, used by the tmux status bar
-claude-dashboard setup                 # Install helper scripts & configure tmux
+claude-dashboard setup                 # Install helper scripts & configure tmux (backs up ~/.tmux.conf)
+claude-dashboard setup --dry-run       # Show what setup would change, change nothing
 claude-dashboard --version             # Show version
 claude-dashboard --help                # Show help
 ```
