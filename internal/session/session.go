@@ -31,6 +31,8 @@ type Session struct {
 	Path      string
 	Branch    string // git branch checked out in Path, "" outside a repository
 	Managed   bool   // true = tmux session (can attach/detach), false = terminal process (read-only)
+	Hook      string    // state last reported by Claude Code hooks: "active", "waiting" or "idle"; "" when none
+	HookAt    time.Time // when Hook was reported
 }
 
 // Uptime returns the human-readable uptime string.

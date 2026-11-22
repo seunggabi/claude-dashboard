@@ -2,6 +2,7 @@ package tmux
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os/exec"
 	"regexp"
@@ -96,6 +97,71 @@ func (c *Client) KillSession(ctx context.Context, name string) error {
 	cmd := exec.CommandContext(ctx, c.tmuxPath, "kill-session", "-t", name)
 	return cmd.Run()
 }
+
+// MaxSendLength caps a single message so a runaway task cannot flood a pane.
+const MaxSendLength = 4000
+
+// submitDelay separates the typed text from the Enter key. Claude Code treats
+// text that arrives in one burst as a paste, and an Enter inside a paste adds a
+// newline instead of submitting.
+const submitDelay = 300 * time.Millisecond
+
+// ValidateSendText reports whether text can be typed into a session safely.
+// It must be one non-empty line without control characters: a newline or an
+// escape sequence could submit early or drive the terminal instead of typing.
+func ValidateSendText(text string) error {
+	if strings.TrimSpace(text) == "" {
+		return fmt.Errorf("message is empty")
+	}
+	if len(text) > MaxSendLength {
+		return fmt.Errorf("message is %d bytes; the limit is %d (point to a file instead)", len(text), MaxSendLength)
+	}
+	for _, r := range text {
+		if r < 0x20 || r == 0x7f {
+			return fmt.Errorf("message must be a single line without control characters (put long instructions in a file and reference its path)")
+		}
+	}
+	return nil
+}
+
+// SendText types text into the active pane of a session and presses Enter.
+// The text is sent literally (send-keys -l), so a message such as "C-c" is
+// typed as characters and never interpreted as a key name.
+func (c *Client) SendText(ctx context.Context, name, text string) error {
+	if err := validateSessionName(name); err != nil {
+		return err
+	}
+	if err := ValidateSendText(text); err != nil {
+		return err
+	}
+
+	// "=name:" selects the session by exact name, never by prefix.
+	target := "=" + name + ":"
+
+	typeCtx, cancel := withTimeout(ctx)
+	defer cancel()
+	if err := exec.CommandContext(typeCtx, c.tmuxPath, "send-keys", "-t", target, "-l", "--", text).Run(); err != nil {
+		return fmt.Errorf("failed to type into %s: %w", name, err)
+	}
+
+	select {
+	case <-time.After(submitDelay):
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+
+	enterCtx, cancelEnter := withTimeout(ctx)
+	defer cancelEnter()
+	if err := exec.CommandContext(enterCtx, c.tmuxPath, "send-keys", "-t", target, "Enter").Run(); err != nil {
+		return fmt.Errorf("typed into %s but failed to press Enter (%v): %w", name, err, ErrTypedNotSubmitted)
+	}
+	return nil
+}
+
+// ErrTypedNotSubmitted marks a SendText failure after the text was typed: it
+// is sitting in the session's input box. Retrying would type it twice, so
+// callers must not resend without looking at the session first.
+var ErrTypedNotSubmitted = errors.New("text typed but not submitted")
 
 // CapturePaneContent captures the visible pane content of a session.
 func (c *Client) CapturePaneContent(ctx context.Context, name string, historyLines int) (string, error) {

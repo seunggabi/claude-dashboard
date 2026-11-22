@@ -160,6 +160,8 @@ func TestStatusFromHook(t *testing.T) {
 		{at("active", -time.Hour), now.Add(-time.Minute), "", false},
 		{at("waiting", -time.Hour), now.Add(-time.Hour), StatusWaiting, true},
 		{at("waiting", -time.Minute), now, "", false},
+		{at("asking", -time.Hour), now.Add(-time.Hour), StatusWaiting, true},
+		{at("asking", -time.Minute), now, "", false},
 		{at("idle", 0), now, "", false},
 		{"waiting", now, "", false},
 		{"", now, "", false},

@@ -65,6 +65,7 @@ func (d *Detector) Detect(ctx context.Context) ([]Session, error) {
 				Path:      raw.Path,
 				Managed:   true,
 			}
+			s.Hook, s.HookAt = parseHook(raw.ClaudeState)
 			if pid, err := d.client.GetSessionPID(ctx, raw.Name); err == nil {
 				s.PID = pid
 			}
@@ -244,7 +245,8 @@ func statusFromHook(value string, lastActivity time.Time) (Status, bool) {
 			return "", false
 		}
 		return StatusActive, true
-	case "waiting":
+	case "waiting", "asking":
+		// "asking" is a question to the user; it is still a waiting session.
 		if lastActivity.After(reportedAt.Add(staleWaiting)) {
 			return "", false
 		}

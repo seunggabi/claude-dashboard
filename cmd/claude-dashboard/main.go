@@ -42,7 +42,8 @@ func main() {
 	// Skip for --version, --help, and setup commands
 	skipAutoSetup := len(os.Args) > 1 && (os.Args[1] == "--version" || os.Args[1] == "-v" ||
 		os.Args[1] == "--help" || os.Args[1] == "-h" || os.Args[1] == "setup" ||
-		os.Args[1] == "status") // status output goes to the tmux status bar
+		os.Args[1] == "status" || // status output goes to the tmux status bar
+		os.Args[1] == "queue" || os.Args[1] == "send" || os.Args[1] == "reply" || os.Args[1] == "dispatch") // scripted: never prompt
 	if !skipAutoSetup {
 		runAutoSetup()
 	}
@@ -61,6 +62,14 @@ func main() {
 				os.Exit(1)
 			}
 			os.Exit(0)
+		case "queue":
+			finish(runQueueCommand(os.Args[2:]))
+		case "send":
+			finish(runSend(os.Args[2:]))
+		case "reply":
+			finish(runReply(os.Args[2:]))
+		case "dispatch":
+			finish(runDispatch(os.Args[2:]))
 		case "status":
 			fmt.Print(app.StatusSummary())
 			os.Exit(0)
@@ -184,6 +193,15 @@ func runAutoSetup() {
 	}
 }
 
+// finish reports err on stderr and exits; it exits 0 when err is nil.
+func finish(err error) {
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+	os.Exit(0)
+}
+
 func printHelp() {
 	fmt.Println(`claude-dashboard - k9s-style Claude Code Session Manager
 
@@ -193,6 +211,10 @@ Usage:
   claude-dashboard new [NAME] [options]                Create a new session (name defaults to path)
   claude-dashboard attach NAME                         Attach to a session directly
   claude-dashboard status                              Print waiting/active counts for the tmux status bar
+  claude-dashboard queue add|list|rm|clear-done        Manage the task queue (add --issue 123, add --repo owner/name "text")
+  claude-dashboard dispatch --sessions a,b | --all     Give queued tasks to idle sessions (--watch, --dry-run, --max-active N)
+  claude-dashboard send SESSION TEXT                   Type one line into an idle session
+  claude-dashboard reply SESSION TEXT | --asking TEXT  Answer a session (or all sessions) that asked a question
   claude-dashboard hook STATE                          Record active/waiting/idle from a Claude Code hook
   claude-dashboard --version                           Show version
   claude-dashboard --help                              Show this help
