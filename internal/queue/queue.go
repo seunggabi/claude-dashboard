@@ -159,12 +159,25 @@ func (q *Queue) AddWithBrief(text, brief, repo, ref string) (Task, error) {
 
 // List returns every task, oldest first.
 func (q *Queue) List() ([]Task, error) {
-	var tasks []Task
-	err := q.update(func(st *state) error {
-		tasks = append(tasks, st.Tasks...)
-		return nil
-	})
-	return tasks, err
+	st, err := q.read()
+	if err != nil {
+		return nil, err
+	}
+	return append([]Task(nil), st.Tasks...), nil
+}
+
+// read loads the state without writing anything. It takes a shared lock when
+// the lock file exists, and returns an empty state when there is no queue yet,
+// so merely looking never creates or rewrites a file. Writers replace the file
+// atomically, so a reader never sees a half-written queue.
+func (q *Queue) read() (*state, error) {
+	if lock, err := os.Open(q.path + ".lock"); err == nil {
+		defer lock.Close()
+		if syscall.Flock(int(lock.Fd()), syscall.LOCK_SH) == nil {
+			defer func() { _ = syscall.Flock(int(lock.Fd()), syscall.LOCK_UN) }()
+		}
+	}
+	return q.load()
 }
 
 // Pending returns the tasks still waiting, oldest first.

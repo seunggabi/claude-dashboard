@@ -124,7 +124,11 @@ func ValidateSendText(text string) error {
 	return nil
 }
 
-// SendText types text into the active pane of a session and presses Enter.
+// SendText types text into the pane where Claude Code runs and presses Enter.
+// That pane is the one "claude-dashboard hook" recorded in @claude_pane, never
+// the session's active pane: a split shell pane that has focus would otherwise
+// run the text as shell commands. A session that has not recorded its pane is
+// refused with ErrNoClaudePane.
 // The text is sent literally (send-keys -l), so a message such as "C-c" is
 // typed as characters and never interpreted as a key name.
 func (c *Client) SendText(ctx context.Context, name, text string) error {
@@ -135,8 +139,10 @@ func (c *Client) SendText(ctx context.Context, name, text string) error {
 		return err
 	}
 
-	// "=name:" selects the session by exact name, never by prefix.
-	target := "=" + name + ":"
+	target, err := c.claudePane(ctx, name)
+	if err != nil {
+		return err
+	}
 
 	typeCtx, cancel := withTimeout(ctx)
 	defer cancel()
@@ -162,6 +168,44 @@ func (c *Client) SendText(ctx context.Context, name, text string) error {
 // is sitting in the session's input box. Retrying would type it twice, so
 // callers must not resend without looking at the session first.
 var ErrTypedNotSubmitted = errors.New("text typed but not submitted")
+
+// ErrNoClaudePane means the session has not recorded which pane runs Claude
+// Code, so nothing can be typed into it safely.
+var ErrNoClaudePane = errors.New("session has not reported its Claude pane (update claude-dashboard and re-run setup-hooks)")
+
+// paneIDRe matches a tmux pane id such as %3.
+var paneIDRe = regexp.MustCompile(`^%[0-9]+$`)
+
+// claudePane returns the id of the pane that runs Claude Code in the session,
+// as recorded by "claude-dashboard hook" in the @claude_pane option. The id is
+// validated and checked to still exist and to belong to this session, so a
+// stale or tampered value can never redirect the text.
+func (c *Client) claudePane(ctx context.Context, name string) (string, error) {
+	ctx, cancel := withTimeout(ctx)
+	defer cancel()
+
+	// "=name:" selects the session by exact name, never by prefix.
+	out, err := exec.CommandContext(ctx, c.tmuxPath, "show-options", "-qv", "-t", "="+name+":", "@claude_pane").Output()
+	if err != nil {
+		return "", fmt.Errorf("failed to read the Claude pane of %s: %w", name, err)
+	}
+	pane := strings.TrimSpace(string(out))
+	if pane == "" {
+		return "", fmt.Errorf("%s: %w", name, ErrNoClaudePane)
+	}
+	if !paneIDRe.MatchString(pane) {
+		return "", fmt.Errorf("invalid pane id %q recorded for %s", pane, name)
+	}
+
+	owner, err := exec.CommandContext(ctx, c.tmuxPath, "display-message", "-p", "-t", pane, "#{session_name}").Output()
+	if err != nil {
+		return "", fmt.Errorf("the Claude pane %s of %s no longer exists", pane, name)
+	}
+	if strings.TrimSpace(string(owner)) != name {
+		return "", fmt.Errorf("the recorded pane %s does not belong to session %s", pane, name)
+	}
+	return pane, nil
+}
 
 // CapturePaneContent captures the visible pane content of a session.
 func (c *Client) CapturePaneContent(ctx context.Context, name string, historyLines int) (string, error) {

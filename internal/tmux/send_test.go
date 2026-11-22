@@ -2,6 +2,7 @@ package tmux
 
 import (
 	"context"
+	"errors"
 	"os"
 	"os/exec"
 	"strings"
@@ -58,11 +59,28 @@ func isolatedTmux(t *testing.T) *Client {
 	return c
 }
 
-func startCat(t *testing.T, name string) {
+// startCat starts a session running cat and records its pane in @claude_pane
+// the way "claude-dashboard hook" does. It returns the pane id.
+func startCat(t *testing.T, name string) string {
+	t.Helper()
+	pane := startCatUnrecorded(t, name)
+	if out, err := exec.Command("tmux", "set-option", "-q", "-t", pane, "@claude_pane", pane).CombinedOutput(); err != nil {
+		t.Fatalf("set @claude_pane on %s: %v\n%s", name, err, out)
+	}
+	return pane
+}
+
+// startCatUnrecorded starts a session running cat without recording its pane.
+func startCatUnrecorded(t *testing.T, name string) string {
 	t.Helper()
 	if out, err := exec.Command("tmux", "new-session", "-d", "-s", name, "-x", "120", "-y", "30", "cat").CombinedOutput(); err != nil {
 		t.Fatalf("new-session %s: %v\n%s", name, err, out)
 	}
+	out, err := exec.Command("tmux", "display-message", "-p", "-t", "="+name+":", "#{pane_id}").Output()
+	if err != nil {
+		t.Fatalf("pane id of %s: %v", name, err)
+	}
+	return strings.TrimSpace(string(out))
 }
 
 func paneText(t *testing.T, c *Client, name string) string {
@@ -123,5 +141,93 @@ func TestSendTextRejectsBadInputBeforeTyping(t *testing.T) {
 	time.Sleep(200 * time.Millisecond)
 	if got := strings.TrimSpace(paneText(t, c, "cdtest")); got != "" {
 		t.Fatalf("nothing should have been typed, pane has:\n%s", got)
+	}
+}
+
+func capturePane(t *testing.T, pane string) string {
+	t.Helper()
+	out, err := exec.Command("tmux", "capture-pane", "-p", "-t", pane).Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(out)
+}
+
+// A focused split pane must never receive the text: only the recorded Claude pane.
+func TestSendTextTypesIntoRecordedPaneNotActivePane(t *testing.T) {
+	c := isolatedTmux(t)
+	claude := startCat(t, "cdtest")
+
+	// split-window moves focus to the new pane.
+	out, err := exec.Command("tmux", "split-window", "-d", "-P", "-F", "#{pane_id}", "-t", claude, "cat").Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	other := strings.TrimSpace(string(out))
+	if out, err := exec.Command("tmux", "select-pane", "-t", other).CombinedOutput(); err != nil {
+		t.Fatalf("select-pane: %v\n%s", err, out)
+	}
+
+	if err := c.SendText(context.Background(), "cdtest", "only for claude"); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(300 * time.Millisecond)
+
+	if got := capturePane(t, claude); !strings.Contains(got, "only for claude") {
+		t.Fatalf("text did not reach the recorded pane:\n%s", got)
+	}
+	if got := capturePane(t, other); strings.Contains(got, "only for claude") {
+		t.Fatalf("text leaked into the focused split pane:\n%s", got)
+	}
+}
+
+func TestSendTextRefusesSessionWithoutRecordedPane(t *testing.T) {
+	c := isolatedTmux(t)
+	pane := startCatUnrecorded(t, "cdtest")
+
+	err := c.SendText(context.Background(), "cdtest", "hello")
+	if !errors.Is(err, ErrNoClaudePane) {
+		t.Fatalf("err = %v, want ErrNoClaudePane", err)
+	}
+	time.Sleep(200 * time.Millisecond)
+	if got := strings.TrimSpace(capturePane(t, pane)); got != "" {
+		t.Fatalf("nothing should have been typed, pane has:\n%s", got)
+	}
+}
+
+func TestSendTextRefusesMalformedPaneValue(t *testing.T) {
+	c := isolatedTmux(t)
+	pane := startCatUnrecorded(t, "cdtest")
+	if out, err := exec.Command("tmux", "set-option", "-q", "-t", pane, "@claude_pane", "%1;kill-server").CombinedOutput(); err != nil {
+		t.Fatalf("set option: %v\n%s", err, out)
+	}
+
+	if err := c.SendText(context.Background(), "cdtest", "hello"); err == nil {
+		t.Fatal("expected a malformed pane id to be refused")
+	}
+	if !c.HasSession(context.Background(), "cdtest") {
+		t.Fatal("tmux server was affected by a malformed pane value")
+	}
+	if got := strings.TrimSpace(capturePane(t, pane)); got != "" {
+		t.Fatalf("nothing should have been typed, pane has:\n%s", got)
+	}
+}
+
+func TestSendTextRefusesPaneOfAnotherSession(t *testing.T) {
+	c := isolatedTmux(t)
+	startCatUnrecorded(t, "cdone")
+	victim := startCat(t, "cdtwo")
+
+	// cdone claims cdtwo's pane as its own.
+	if out, err := exec.Command("tmux", "set-option", "-q", "-t", "=cdone:", "@claude_pane", victim).CombinedOutput(); err != nil {
+		t.Fatalf("set option: %v\n%s", err, out)
+	}
+
+	if err := c.SendText(context.Background(), "cdone", "hello"); err == nil {
+		t.Fatal("expected a pane of another session to be refused")
+	}
+	time.Sleep(200 * time.Millisecond)
+	if got := strings.TrimSpace(capturePane(t, victim)); got != "" {
+		t.Fatalf("text leaked into another session's pane:\n%s", got)
 	}
 }

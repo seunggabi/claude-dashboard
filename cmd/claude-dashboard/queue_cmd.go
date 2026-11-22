@@ -380,6 +380,7 @@ func runDispatch(args []string) error {
 	all := fs.Bool("all", false, "every managed session")
 	behind := fs.Bool("queue-behind-work", false, "also give tasks to busy sessions")
 	maxActive := fs.Int("max-active", 0, "do not start tasks while this many matched sessions are active (0 = no limit)")
+	includeUnclear := fs.Bool("include-unclear", false, "also send text tasks whose requirements score as unclear (held by default)")
 	dry := fs.Bool("dry-run", false, "show what would be sent without sending")
 	watch := fs.Bool("watch", false, "keep dispatching until interrupted")
 	interval := fs.Duration("interval", 10*time.Second, "time between passes with --watch")
@@ -423,6 +424,9 @@ func runDispatch(args []string) error {
 	q := queue.Open(queue.DefaultPath())
 	det := session.NewDetector(client)
 	opt := dispatch.Options{Sessions: globs, Mode: mode, MaxActive: *maxActive, DryRun: *dry}
+	if !*includeUnclear {
+		opt.Accept = clearEnough
+	}
 
 	if *watch {
 		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -446,6 +450,20 @@ func runDispatch(args []string) error {
 	return nil
 }
 
+// clearEnough is the default dispatch filter: a task is held when its own
+// words (not the appended shared guidelines) score as unclear. Issue tasks carry
+// their requirements in the issue, so they are never held.
+func clearEnough(t queue.Task) bool {
+	if t.Ref != "" {
+		return true
+	}
+	own := t.Brief
+	if own == "" {
+		own = t.Text
+	}
+	return clarity.Score(own).Level != "unclear"
+}
+
 // printReport prints what a pass did. Skipped sessions are listed only when
 // verbose, so a watching dispatcher stays quiet between events.
 func printReport(r dispatch.Report, verbose bool) {
@@ -464,6 +482,9 @@ func printReport(r dispatch.Report, verbose bool) {
 		fmt.Fprintf(os.Stderr, "%s  ? task %d needs a clone of %s but no selected session has one\n", stamp, t.ID, t.Repo)
 	}
 	if verbose {
+		for _, t := range r.Held {
+			fmt.Printf("%s  ~ task %d held: requirements unclear (rewrite it, or pass --include-unclear)\n", stamp, t.ID)
+		}
 		names := make([]string, 0, len(r.Skipped))
 		for name := range r.Skipped {
 			names = append(names, name)
@@ -472,7 +493,7 @@ func printReport(r dispatch.Report, verbose bool) {
 		for _, name := range names {
 			fmt.Printf("%s  - %s skipped: %s\n", stamp, name, r.Skipped[name])
 		}
-		if len(r.Sent) == 0 && len(r.Failed) == 0 && len(names) == 0 {
+		if len(r.Sent) == 0 && len(r.Failed) == 0 && len(r.Held) == 0 && len(names) == 0 {
 			fmt.Println("Nothing to do.")
 		}
 	}

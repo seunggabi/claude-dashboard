@@ -43,7 +43,7 @@ func main() {
 	skipAutoSetup := len(os.Args) > 1 && (os.Args[1] == "--version" || os.Args[1] == "-v" ||
 		os.Args[1] == "--help" || os.Args[1] == "-h" || os.Args[1] == "setup" ||
 		os.Args[1] == "status" || // status output goes to the tmux status bar
-		os.Args[1] == "queue" || os.Args[1] == "send" || os.Args[1] == "reply" || os.Args[1] == "dispatch") // scripted: never prompt
+		os.Args[1] == "queue" || os.Args[1] == "send" || os.Args[1] == "reply" || os.Args[1] == "dispatch" || os.Args[1] == "setup-hooks") // scripted: never prompt
 	if !skipAutoSetup {
 		runAutoSetup()
 	}
@@ -70,6 +70,8 @@ func main() {
 			finish(runReply(os.Args[2:]))
 		case "dispatch":
 			finish(runDispatch(os.Args[2:]))
+		case "setup-hooks":
+			finish(runSetupHooks(os.Args[2:]))
 		case "status":
 			fmt.Print(app.StatusSummary())
 			os.Exit(0)
@@ -132,6 +134,9 @@ func runHook(state string) {
 	}
 	value := fmt.Sprintf("%s:%d", state, time.Now().Unix())
 	_ = exec.Command("tmux", "set-option", "-q", "-t", pane, "@claude_state", value).Run()
+	// Remember which pane runs Claude so text sent later is typed there and
+	// not into whichever pane of the session has focus.
+	_ = exec.Command("tmux", "set-option", "-q", "-t", pane, "@claude_pane", pane).Run()
 }
 
 // parseNewArgs parses the arguments that follow "new". A leading argument that
@@ -215,6 +220,7 @@ Usage:
   claude-dashboard dispatch --sessions a,b | --all     Give queued tasks to idle sessions (--watch, --dry-run, --max-active N)
   claude-dashboard send SESSION TEXT                   Type one line into an idle session
   claude-dashboard reply SESSION TEXT | --asking TEXT  Answer a session (or all sessions) that asked a question
+  claude-dashboard setup-hooks [--dry-run|--uninstall]  Register hooks in ~/.claude/settings.json (backup first)
   claude-dashboard hook STATE                          Record active/waiting/idle from a Claude Code hook
   claude-dashboard --version                           Show version
   claude-dashboard --help                              Show this help
