@@ -44,20 +44,16 @@ brews:
     license: "MIT"
     install: |
       bin.install "claude-dashboard"
-    post_install: |
-      # The helper scripts are embedded in the binary; setup writes them to
-      # ~/.local/bin and configures tmux.
-      system "#{bin}/claude-dashboard", "setup"
     caveats: |
-      Setup was automatically run during installation.
+      claude-dashboard does not change your tmux configuration on install.
+      The first time you run it in a terminal it shows what it would change
+      and asks before doing anything.
 
-      If you need to re-run setup:
+      To set up tmux integration yourself (backs up ~/.tmux.conf first):
         claude-dashboard setup
 
-      This will:
-      - Install helper scripts to ~/.local/bin/
-      - Configure ~/.tmux.conf for F12 mouse toggle
-      - Add status bar with version info
+      To preview the changes without applying them:
+        claude-dashboard setup --dry-run
 
       To start using claude-dashboard:
         claude-dashboard
