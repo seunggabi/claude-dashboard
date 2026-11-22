@@ -60,6 +60,10 @@ var (
 	Waiting = lipgloss.NewStyle().
 		Foreground(ColorWarning)
 
+	Asking = lipgloss.NewStyle().
+		Foreground(ColorSecondary).
+		Bold(true)
+
 	Selected = lipgloss.NewStyle().
 			Background(ColorPrimary).
 			Foreground(ColorText).

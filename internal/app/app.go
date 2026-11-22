@@ -14,9 +14,12 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/seunggabi/claude-dashboard/internal/clarity"
 	"github.com/seunggabi/claude-dashboard/internal/config"
 	"github.com/seunggabi/claude-dashboard/internal/conversation"
 	"github.com/seunggabi/claude-dashboard/internal/monitor"
+	"github.com/seunggabi/claude-dashboard/internal/progress"
+	"github.com/seunggabi/claude-dashboard/internal/queue"
 	"github.com/seunggabi/claude-dashboard/internal/session"
 	"github.com/seunggabi/claude-dashboard/internal/styles"
 	"github.com/seunggabi/claude-dashboard/internal/tmux"
@@ -28,6 +31,22 @@ var validSessionName = regexp.MustCompile(`^[a-zA-Z0-9_./-]+$`)
 
 // Version is set by main.go at build time.
 var Version = "dev"
+
+// progressCacheTTL is how long a cached progress entry remains fresh.
+const progressCacheTTL = 5 * time.Second
+
+// progressEntry caches a single ForSession call result with its timestamp.
+type progressEntry struct {
+	p      progress.Progress
+	ok     bool
+	readAt time.Time
+}
+
+// MetaMsg carries refreshed progress cache and clarity scores.
+type MetaMsg struct {
+	progressCache map[string]progressEntry
+	clarityByName map[string]int
+}
 
 // View represents the current view.
 type View int
@@ -77,6 +96,13 @@ type Model struct {
 
 	// Attach target (set when user wants to attach, triggers Quit)
 	attachTarget string
+
+	// Progress cache: keyed by session Path; only populated for Managed sessions.
+	forSessionFn  func(dir string) (progress.Progress, bool)
+	progressCache map[string]progressEntry
+
+	// clarityByName maps session Name to clarity score (-1 = issue task / no data).
+	clarityByName map[string]int
 }
 
 // SessionsMsg carries refreshed session list.
@@ -120,10 +146,11 @@ func New() (Model, error) {
 	filterInput.Width = 30
 
 	m := Model{
-		manager:    mgr,
-		cfg:        cfg,
-		view:       ViewDashboard,
-		filterText: filterInput,
+		manager:      mgr,
+		cfg:          cfg,
+		view:         ViewDashboard,
+		filterText:   filterInput,
+		forSessionFn: progress.ForSession,
 	}
 
 	return m, nil
@@ -133,6 +160,7 @@ func New() (Model, error) {
 func (m Model) Init() tea.Cmd {
 	return tea.Batch(
 		m.refreshSessions,
+		m.refreshMeta,
 		monitor.TickCmd(m.cfg.RefreshInterval),
 	)
 }
@@ -149,7 +177,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case monitor.TickMsg:
-		cmds := []tea.Cmd{m.refreshSessions, monitor.TickCmd(m.cfg.RefreshInterval)}
+		cmds := []tea.Cmd{m.refreshSessions, m.refreshMeta, monitor.TickCmd(m.cfg.RefreshInterval)}
 		if m.view == ViewOverview {
 			cmds = append(cmds, m.startSummaries())
 		}
@@ -158,6 +186,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case SummariesMsg:
 		m.summaries = msg
 		m.loadingSummaries = false
+		return m, nil
+
+	case MetaMsg:
+		m.progressCache = msg.progressCache
+		m.clarityByName = msg.clarityByName
 		return m, nil
 
 	case SessionsMsg:
@@ -471,7 +504,18 @@ func (m Model) View() string {
 	switch m.view {
 	case ViewDashboard:
 		visibleRows := m.visibleSessionRows()
-		content := ui.RenderDashboard(sessions, m.cursor, m.width, m.scrollOffset, visibleRows)
+		progData := make(map[string]ui.ProgressData)
+		for _, s := range sessions {
+			if entry, ok := m.progressCache[s.Path]; ok {
+				progData[s.Name] = ui.ProgressData{
+					Done:    entry.p.Done,
+					Total:   entry.p.Total,
+					Percent: entry.p.Percent(),
+					OK:      entry.ok,
+				}
+			}
+		}
+		content := ui.RenderDashboard(sessions, m.cursor, m.width, m.scrollOffset, visibleRows, progData, m.clarityByName)
 		b.WriteString(content)
 		lines := strings.Count(content, "\n")
 		for i := lines; i < contentHeight; i++ {
@@ -676,6 +720,58 @@ func (m Model) fetchConversation(path string) tea.Cmd {
 		content, err := m.manager.GetConversation(path, 50)
 		return LogsMsg{Content: content, Err: err}
 	}
+}
+
+// refreshMeta reads the queue once and refreshes progress data for all
+// managed sessions.  It runs as a tea.Cmd on every tick alongside refreshSessions.
+func (m Model) refreshMeta() tea.Msg {
+	qPath := queue.DefaultPath()
+	q := queue.Open(qPath)
+	tasks, _ := q.List()
+
+	// Find the most recently dispatched task per session name.
+	latestBySession := make(map[string]queue.Task)
+	for _, t := range tasks {
+		if t.Status != queue.Dispatched || t.Session == "" {
+			continue
+		}
+		existing, ok := latestBySession[t.Session]
+		if !ok || t.DispatchedAt.After(existing.DispatchedAt) {
+			latestBySession[t.Session] = t
+		}
+	}
+
+	clarityMap := make(map[string]int)
+	for sessName, t := range latestBySession {
+		if t.Ref != "" {
+			clarityMap[sessName] = -1
+		} else {
+			text := t.Brief
+			if text == "" {
+				text = t.Text
+			}
+			result := clarity.Score(text)
+			clarityMap[sessName] = result.Score
+		}
+	}
+
+	now := time.Now()
+	newCache := make(map[string]progressEntry)
+	for k, v := range m.progressCache {
+		newCache[k] = v
+	}
+	for _, s := range m.sessions {
+		if !s.Managed || s.Path == "" {
+			continue
+		}
+		if entry, ok := newCache[s.Path]; ok && now.Sub(entry.readAt) < progressCacheTTL {
+			continue
+		}
+		p, ok := m.forSessionFn(s.Path)
+		newCache[s.Path] = progressEntry{p: p, ok: ok, readAt: now}
+	}
+
+	return MetaMsg{progressCache: newCache, clarityByName: clarityMap}
 }
 
 // cleanDA1 detects and removes DA1 residue (?6c) from a tmux pane.

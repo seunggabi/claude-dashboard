@@ -56,8 +56,18 @@ func (s *Session) Uptime() string {
 	return fmt.Sprintf("%dd%dh", days, hours)
 }
 
+// IsAsking reports whether the session is waiting because Claude raised a
+// permission prompt (Hook == "asking"). Permission prompts keep the
+// plain "◎ waiting" label; only asking sessions get "◉ asking".
+func (s *Session) IsAsking() bool {
+	return s.Hook == "asking" && s.Status == StatusWaiting
+}
+
 // StatusString returns a colored status string.
 func (s *Session) StatusString() string {
+	if s.IsAsking() {
+		return "◉ asking"
+	}
 	switch s.Status {
 	case StatusActive:
 		return "● active"

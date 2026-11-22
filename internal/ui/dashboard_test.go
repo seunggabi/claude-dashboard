@@ -3,6 +3,8 @@ package ui
 import (
 	"strings"
 	"testing"
+
+	"github.com/seunggabi/claude-dashboard/internal/session"
 )
 
 // ---------------------------------------------------------------------------
@@ -183,5 +185,159 @@ func TestTruncatePathTableDriven(t *testing.T) {
 				t.Errorf("truncatePath(%q, %d): %s, got %q", tc.input, tc.maxLen, tc.desc, got)
 			}
 		})
+	}
+}
+
+// ---------------------------------------------------------------------------
+// fmtProgress
+// ---------------------------------------------------------------------------
+
+func TestFmtProgress_unknownReturnsDash(t *testing.T) {
+	got := fmtProgress(ProgressData{OK: false})
+	if got != "-" {
+		t.Errorf("expected %q, got %q", "-", got)
+	}
+}
+
+func TestFmtProgress_zeroTotalReturnsDash(t *testing.T) {
+	got := fmtProgress(ProgressData{OK: true, Done: 0, Total: 0})
+	if got != "-" {
+		t.Errorf("expected %q, got %q", "-", got)
+	}
+}
+
+func TestFmtProgress_partialProgress(t *testing.T) {
+	got := fmtProgress(ProgressData{OK: true, Done: 4, Total: 6, Percent: 66})
+	if got != "4/6 66%" {
+		t.Errorf("expected %q, got %q", "4/6 66%", got)
+	}
+}
+
+func TestFmtProgress_complete(t *testing.T) {
+	got := fmtProgress(ProgressData{OK: true, Done: 6, Total: 6, Percent: 100})
+	if got != "6/6 100%" {
+		t.Errorf("expected %q, got %q", "6/6 100%", got)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// fmtClarity
+// ---------------------------------------------------------------------------
+
+func TestFmtClarity_negativeReturnsDash(t *testing.T) {
+	got := fmtClarity(-1, 12)
+	if got != "-" {
+		t.Errorf("expected %q, got %q", "-", got)
+	}
+}
+
+func TestFmtClarity_wideColumnShowsLevel(t *testing.T) {
+	got := fmtClarity(82, 12)
+	if got != "82 clear" {
+		t.Errorf("expected %q, got %q", "82 clear", got)
+	}
+}
+
+func TestFmtClarity_narrowColumnShowsScoreOnly(t *testing.T) {
+	// "82 clear" is 8 chars; a column of 5 is too narrow
+	got := fmtClarity(82, 5)
+	if got != "82" {
+		t.Errorf("expected %q, got %q", "82", got)
+	}
+}
+
+func TestFmtClarity_vagueLevel(t *testing.T) {
+	got := fmtClarity(55, 12)
+	if got != "55 vague" {
+		t.Errorf("expected %q, got %q", "55 vague", got)
+	}
+}
+
+func TestFmtClarity_unclearLevel(t *testing.T) {
+	got := fmtClarity(20, 12)
+	if got != "20 unclear" {
+		t.Errorf("expected %q, got %q", "20 unclear", got)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// StatusString asking variant
+// ---------------------------------------------------------------------------
+
+func TestStatusString_askingReturnsAskingLabel(t *testing.T) {
+	s := session.Session{
+		Status: session.StatusWaiting,
+		Hook:   "asking",
+	}
+	got := s.StatusString()
+	if got != "◉ asking" {
+		t.Errorf("expected %q, got %q", "◉ asking", got)
+	}
+}
+
+func TestStatusString_waitingWithoutHookReturnsWaiting(t *testing.T) {
+	s := session.Session{Status: session.StatusWaiting}
+	got := s.StatusString()
+	if got != "◎ waiting" {
+		t.Errorf("expected %q, got %q", "◎ waiting", got)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// RenderDashboard wide/narrow
+// ---------------------------------------------------------------------------
+
+func makeSessions() []session.Session {
+	return []session.Session{
+		{
+			Name:    "cd-test",
+			Project: "myproject",
+			Branch:  "main",
+			Status:  session.StatusActive,
+			Path:    "/tmp/test",
+			Managed: true,
+		},
+	}
+}
+
+func TestRenderDashboard_wideShowsProgressAndClarity(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	sessions := makeSessions()
+	progData := map[string]ProgressData{
+		"cd-test": {OK: true, Done: 3, Total: 6, Percent: 50},
+	}
+	clarityByName := map[string]int{"cd-test": 75}
+
+	out := RenderDashboard(sessions, 0, 160, 0, 10, progData, clarityByName)
+
+	if !strings.Contains(out, "PROGRESS") {
+		t.Error("wide render: expected PROGRESS column in header")
+	}
+	if !strings.Contains(out, "CLARITY") {
+		t.Error("wide render: expected CLARITY column in header")
+	}
+	if !strings.Contains(out, "3/6 50%") {
+		t.Error("wide render: expected progress value '3/6 50%'")
+	}
+}
+
+func TestRenderDashboard_narrowHidesProgressAndClarity(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	sessions := makeSessions()
+	progData := map[string]ProgressData{
+		"cd-test": {OK: true, Done: 3, Total: 6, Percent: 50},
+	}
+	clarityByName := map[string]int{"cd-test": 75}
+
+	out := RenderDashboard(sessions, 0, 100, 0, 10, progData, clarityByName)
+
+	if strings.Contains(out, "PROGRESS") {
+		t.Error("narrow render: PROGRESS column should be hidden")
+	}
+	if strings.Contains(out, "CLARITY") {
+		t.Error("narrow render: CLARITY column should be hidden")
+	}
+	if strings.Contains(out, "3/6 50%") {
+		t.Error("narrow render: progress value should not appear")
 	}
 }

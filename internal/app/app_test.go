@@ -2,8 +2,10 @@ package app
 
 import (
 	"testing"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/seunggabi/claude-dashboard/internal/progress"
 	"github.com/seunggabi/claude-dashboard/internal/session"
 )
 
@@ -64,6 +66,60 @@ func TestCursorIsClampedToFilteredList(t *testing.T) {
 	m.clampCursor()
 	if _, ok := m.selected(); ok || m.cursor != 0 {
 		t.Fatalf("empty list should select nothing with cursor 0, got cursor=%d", m.cursor)
+	}
+}
+
+// TestProgressCacheTTL verifies that a fresh entry is not re-fetched within
+// the TTL window, so forSessionFn is called at most once per path per 5s.
+func TestProgressCacheTTL(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+
+	calls := 0
+	fakeFn := func(dir string) (progress.Progress, bool) {
+		calls++
+		return progress.Progress{Done: 2, Total: 4}, true
+	}
+
+	sess := session.Session{
+		Name:    "cd-test",
+		Path:    "/fake/path",
+		Managed: true,
+		Status:  session.StatusActive,
+	}
+
+	m := Model{
+		sessions:      []session.Session{sess},
+		forSessionFn:  fakeFn,
+		progressCache: make(map[string]progressEntry),
+	}
+
+	// First call: cache is empty, forSessionFn must be called.
+	msg1 := m.refreshMeta()
+	meta1 := msg1.(MetaMsg)
+	if calls != 1 {
+		t.Fatalf("first refresh: expected 1 call to forSessionFn, got %d", calls)
+	}
+
+	// Store the cache returned by the first call.
+	m.progressCache = meta1.progressCache
+
+	// Second call within TTL: entry is fresh, forSessionFn must NOT be called again.
+	msg2 := m.refreshMeta()
+	_ = msg2.(MetaMsg)
+	if calls != 1 {
+		t.Fatalf("second refresh within TTL: expected still 1 call, got %d", calls)
+	}
+
+	// Expire the cache entry manually then refresh: forSessionFn must be called.
+	m.progressCache[sess.Path] = progressEntry{
+		p:      progress.Progress{Done: 2, Total: 4},
+		ok:     true,
+		readAt: time.Now().Add(-progressCacheTTL - time.Second),
+	}
+	msg3 := m.refreshMeta()
+	_ = msg3.(MetaMsg)
+	if calls != 2 {
+		t.Fatalf("refresh after TTL expiry: expected 2 calls, got %d", calls)
 	}
 }
 
